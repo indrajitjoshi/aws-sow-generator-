@@ -117,10 +117,12 @@ def make_api_call(url, payload):
 def generate_architecture_dot(arch_json):
     """
     Creates a professional layered DOT string matching the reference images.
+    Includes safe dictionary access to prevent AttributeErrors.
     """
-    ui = arch_json.get('ui', {})
-    orch = arch_json.get('orchestration', {})
-    llm_info = arch_json.get('llm', {})
+    # Safe object retrieval
+    ui = arch_json.get('ui', {}) if isinstance(arch_json.get('ui'), dict) else {"type": str(arch_json.get('ui', 'Web App'))}
+    orch = arch_json.get('orchestration', {}) if isinstance(arch_json.get('orchestration'), dict) else {"service": str(arch_json.get('orchestration', 'AWS Lambda'))}
+    llm_info = arch_json.get('llm', {}) if isinstance(arch_json.get('llm'), dict) else {"provider": "Amazon Bedrock", "model_family": str(arch_json.get('llm', 'LLM'))}
     
     dot = [
         'digraph G {',
@@ -144,7 +146,8 @@ def generate_architecture_dot(arch_json):
     ]
 
     if arch_json.get('agent_framework'):
-        fw = ", ".join(arch_json.get('agent_framework', []))
+        agent_fw = arch_json.get('agent_framework', [])
+        fw = ", ".join(agent_fw) if isinstance(agent_fw, list) else str(agent_fw)
         dot.append(f'    FRAMEWORK [label="Agent Framework\\n({fw})", fillcolor="#8b5cf6", fontcolor="white"];')
         dot.append('    ORCH -> FRAMEWORK [label="1. Orchestrate"];')
         core_node = "FRAMEWORK"
@@ -161,7 +164,8 @@ def generate_architecture_dot(arch_json):
     
     if arch_json.get('vector_store'):
         dot.append(f'    VS [label="Vector Store\\n({arch_json.get("vector_store")})", fillcolor="#64748b", fontcolor="white"];')
-        dot.append(f'    EMB [label="Embedding Model\\n({arch_json.get("embeddings", {}).get("provider", "Titan")})", fillcolor="#64748b", fontcolor="white"];')
+        emb_service = arch_json.get('embeddings', {}).get('provider', 'Titan') if isinstance(arch_json.get('embeddings'), dict) else "Titan"
+        dot.append(f'    EMB [label="Embedding Model\\n({emb_service})", fillcolor="#64748b", fontcolor="white"];')
     
     if arch_json.get('databases'):
         db_names = arch_json.get('databases', [])
@@ -419,15 +423,18 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             """
             res_arch = make_api_call(url, {"contents": [{"parts": [{"text": prompt_arch}]}], "generationConfig": {"responseMimeType": "application/json"}})
             if res_arch and res_arch.status_code == 200:
-                arch_json = json.loads(res_arch.json()['candidates'][0]['content']['parts'][0]['text'])
-                dot_str = generate_architecture_dot(arch_json)
-                st.session_state.arch_dot_string = dot_str
-                
                 try:
-                    q_url = f"https://quickchart.io/graphviz?graph={quote(dot_str)}"
-                    img_res = requests.get(q_url, timeout=10)
-                    if img_res.status_code == 200: st.session_state.arch_diagram_bytes = img_res.content
-                except: pass
+                    arch_json = json.loads(res_arch.json()['candidates'][0]['content']['parts'][0]['text'])
+                    dot_str = generate_architecture_dot(arch_json)
+                    st.session_state.arch_dot_string = dot_str
+                    
+                    try:
+                        q_url = f"https://quickchart.io/graphviz?graph={quote(dot_str)}"
+                        img_res = requests.get(q_url, timeout=10)
+                        if img_res.status_code == 200: st.session_state.arch_diagram_bytes = img_res.content
+                    except: pass
+                except Exception as e:
+                    st.error(f"Error parsing architecture: {str(e)}")
                 
                 st.balloons()
 
