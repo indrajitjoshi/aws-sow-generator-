@@ -197,6 +197,8 @@ def create_docx_logic(text_content, branding_info, diagram_image=None):
     lines = text_content.split('\n')
     i = 0
     overview_started = False
+    arch_section_injected = False
+
     while i < len(lines):
         line = lines[i].strip()
         if not line:
@@ -205,21 +207,30 @@ def create_docx_logic(text_content, branding_info, diagram_image=None):
         clean_text = re.sub(r'^#+\s*', '', re.sub(r'\*+', '', line)).strip()
         upper_text = clean_text.upper()
 
+        # Logic to skip the placeholder text if we are about to inject the diagram
+        if "[ARCHITECTURAL DIAGRAM IMAGE PLACEHOLDER]" in upper_text or "DIAGRAM ILLUSTRATES THE PROPOSED" in upper_text:
+            i += 1
+            continue
+
         if "2 PROJECT OVERVIEW" in upper_text and not overview_started:
             doc.add_page_break()
             overview_started = True
             doc.add_heading(clean_text, level=1)
         elif "4 SOLUTION ARCHITECTURE" in upper_text:
             doc.add_heading(clean_text, level=1)
-            if diagram_image:
-                doc.add_paragraph("The following diagram illustrates the proposed technical architecture for this solution on AWS.")
+            if diagram_image and not arch_section_injected:
+                doc.add_paragraph("The following diagram illustrates the proposed technical architecture for this solution on AWS, designed for scalability and secure GenAI orchestration.")
                 try:
-                    doc.add_picture(io.BytesIO(diagram_image), width=Inches(6.0))
+                    # Center the image
+                    p_img = doc.add_paragraph()
+                    p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    p_img.add_run().add_picture(io.BytesIO(diagram_image), width=Inches(6.0))
                 except:
-                    doc.add_paragraph("[Architectural Diagram Image Placeholder]")
+                    doc.add_paragraph("[Error rendering diagram image]")
+                arch_section_injected = True
         elif line.startswith('|'):
-            # Simple table processor placeholder
-            pass
+            # Table logic handled by external processor usually, here simplified
+            p = doc.add_paragraph(line)
         elif line.startswith('# '): doc.add_heading(clean_text, level=1)
         elif line.startswith('## '): doc.add_heading(clean_text, level=2)
         elif line.startswith('### '): doc.add_heading(clean_text, level=3)
@@ -391,11 +402,27 @@ if st.session_state.generated_sow:
         st.session_state.generated_sow = st.text_area("SOW Content", value=st.session_state.generated_sow, height=500)
     with tab_preview:
         st.markdown('<div class="sow-preview">', unsafe_allow_html=True)
-        if st.session_state.arch_dot_string:
-            st.markdown("### 4 SOLUTION ARCHITECTURE")
+        # Pre-rendering logic for Visual Preview: strip the placeholder and inject diagram
+        preview_text = st.session_state.generated_sow
+        
+        # Regex to find where Section 4 starts
+        arch_match = re.search(r'(#*\s*4\s+SOLUTION ARCHITECTURE)', preview_text, re.IGNORECASE)
+        
+        if arch_match and st.session_state.arch_dot_string:
+            pos = arch_match.end()
+            # Split the text at Section 4
+            before_arch = preview_text[:pos]
+            after_arch = preview_text[pos:]
+            
+            # Clean up placeholders in the 'after' section
+            after_arch = re.sub(r'\[ARCHITECTURAL DIAGRAM.*?\]', '', after_arch, flags=re.IGNORECASE)
+            
+            st.markdown(before_arch)
             st.graphviz_chart(st.session_state.arch_dot_string)
-            st.divider()
-        st.markdown(st.session_state.generated_sow)
+            st.markdown(after_arch)
+        else:
+            st.markdown(preview_text)
+            
         st.markdown('</div>', unsafe_allow_html=True)
 
     if st.button("💾 Download .docx", use_container_width=True):
