@@ -4,3 +4,8 @@ requests
 python-docx
 tabulate
 diagrams
+streamlit
+requests
+python-docx
+tabulate
+datetime
