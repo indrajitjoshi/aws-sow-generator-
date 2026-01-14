@@ -382,24 +382,37 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             prompt_text = f"""
             Generate a COMPLETE formal enterprise Scope of Work (SOW) for {selected_sow_name} in {final_industry}.
             
-            MANDATORY STRUCTURE:
+            STRICT PAGE & SECTION FLOW:
             1 TABLE OF CONTENTS (Indented sub-items)
             2 PROJECT OVERVIEW
-              2.1 OBJECTIVE
-              2.2 PROJECT SPONSOR(S) / STAKEHOLDER(S) / PROJECT TEAM
+              2.1 OBJECTIVE (Strictly 2-3 lines based on user input)
+              2.2 PROJECT SPONSOR(S) / STAKEHOLDER(S) / PROJECT TEAM (Include the provided tables for Partner, Customer, AWS, and Escalation)
               2.3 ASSUMPTIONS & DEPENDENCIES
-              2.4 PROJECT SUCCESS CRITERIA
+              2.4 PoC Success Criteria
             3 SCOPE OF WORK – TECHNICAL PROJECT PLAN
             4 SOLUTION ARCHITECTURE / ARCHITECTURAL DIAGRAM
-            5 RESOURCES & COST ESTIMATES
+            6 RESOURCES & COST ESTIMATES
+
+            CONTENT REQUIREMENTS FOR 2.4 (PoC Success Criteria):
+            Include these 5 points:
+            1. Accurate Compliance Validation (detecting compliance/non-compliance against design guidelines; identifying errors/blocking issues vs warnings/quality).
+            2. Structured Metadata (Tags) Extraction (Auto generation of tags: compliance status, CTA type, Offer type, Products, Brands, Brand ambassador).
+            3. Ad Score Generation (Working scoring framework 0-100 reflecting quality).
+            4. Recommendations & Feedback (Clear actionable feedback like 'increase resolution' aligned with guidelines).
+            5. Usability & Workflow Demonstration (Seamless flow: Upload -> Compliance -> Summary -> Recommendations).
+
+            CONTENT REQUIREMENTS FOR 3 (SCOPE OF WORK - TECHNICAL PROJECT PLAN):
+            Include these 4 phases:
+            1. Infrastructure Setup (AWS Services like Bedrock, S3, Lambda; gathering samples/guidelines).
+            2. Create Core Workflows (Banner Upload/Validation, Compliance/Tagging Flow, Issue Detection/Recommendation Flow, Ad Scoring Flow).
+            3. Backend Components (Compliance Engine, Tagging Module, S3 storage).
+            4. Testing and Feedback (Demonstration UI, validate against manual reviewer results, stakeholder feedback).
 
             CONTENT RULES:
-            - NO filler text or introductory sentences between headers 2, 2.1, 2.2, and 2.3.
-            - Section 2 must start fresh and immediately with 2.1 Objective.
-            - Section 2.2 must keep all stakeholder sections distinct with provided tables.
-            - Section 2.3 must clearly segregate into "Dependencies:" and "Assumptions:" labels with bulleted lists.
-            - Remove ALL unnecessary asterisks (*) or markdown bolding marks (**) inside text or headings. 
-            - Use plain text output only for document content. No markdown symbols like bolding or italics in the body.
+            - Section 4 must include the text: "Specifics to be discussed basis POC".
+            - NO filler text or introductory sentences between headers.
+            - Remove ALL markdown bolding marks (**) inside text or headings. 
+            - Use plain text output only for document content.
 
             INPUT DETAILS:
             - SOW Document Type: {selected_sow_name}
@@ -418,7 +431,7 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             
             payload = {
                 "contents": [{"parts": [{"text": prompt_text}]}],
-                "systemInstruction": {"parts": [{"text": "You are a senior Solutions Architect. You generate detailed SOW documents. Strictly follow numbering. NO filler text. NO markdown bolding marks or asterisks in the output text. Plain text output only."}]}
+                "systemInstruction": {"parts": [{"text": "You are a senior Solutions Architect. You generate detailed SOW documents. Strictly follow numbering and the specified flow. Ensure section 2.4 and 3 are detailed as requested. Plain text output only."}]}
             }
             
             try:
@@ -474,7 +487,6 @@ if st.session_state.generated_sow:
             'doc_date_str': doc_date.strftime("%d %B %Y")
         }
         
-        # Passing selected_sow_name to logic to ensure image is mapped during export
         docx_data = create_docx_logic(st.session_state.generated_sow, branding_info, selected_sow_name)
         
         st.download_button(
