@@ -73,7 +73,7 @@ def create_docx_logic(text_content, branding_info):
     
     title_p = doc.add_paragraph()
     title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = title_p.add_run(branding_info['solution_name'])
+    run = title_p.add_run(branding_info['sow_name'])
     run.font.size = Pt(26)
     run.font.bold = True
     
@@ -129,21 +129,15 @@ def create_docx_logic(text_content, branding_info):
     while i < len(lines):
         line = lines[i].strip()
         if not line:
-            # Add small spacing to keep document flow
             if i > 0 and lines[i-1].strip():
                 doc.add_paragraph("")
             i += 1
             continue
 
-        # Prepare strings for structure detection - Use regex for cleaner stripping
-        # Remove markdown bolding and italics artifacts
         line_clean = re.sub(r'\*+', '', line).strip()
-        # Extract title text without header markers
         clean_text = re.sub(r'^#+\s*', '', line_clean).strip()
         upper_text = clean_text.upper()
 
-        # 1. Page Break Trigger: Section 2 MUST start on Page 3
-        # Detection matches any line starting with 2 and PROJECT OVERVIEW, or a header with it
         if ("2 PROJECT OVERVIEW" in upper_text) and (line.startswith('#') or line.startswith('2')) and not overview_started:
             doc.add_page_break()
             in_toc_section = False
@@ -152,7 +146,6 @@ def create_docx_logic(text_content, branding_info):
             i += 1
             continue
 
-        # 2. Section 1 Trigger: TOC MUST stay on Page 2
         if "1 TABLE OF CONTENTS" in upper_text:
             if not toc_already_added:
                 in_toc_section = True
@@ -161,7 +154,6 @@ def create_docx_logic(text_content, branding_info):
             i += 1
             continue
 
-        # Markdown Table Detection
         if line.startswith('|') and i + 1 < len(lines) and lines[i+1].strip().startswith('|'):
             table_lines = []
             while i < len(lines) and lines[i].strip().startswith('|'):
@@ -185,7 +177,6 @@ def create_docx_logic(text_content, branding_info):
                 doc.add_paragraph("")
             continue
 
-        # Standard Elements Parsing
         if line.startswith('# '):
             doc.add_heading(clean_text, level=1)
         elif line.startswith('## '):
@@ -197,18 +188,15 @@ def create_docx_logic(text_content, branding_info):
             if in_toc_section:
                 p.paragraph_format.left_indent = Inches(0.8)
         elif line.startswith('- ') or line.startswith('* '):
-            # Strip the bullet marker for standard list rendering
             bullet_text = re.sub(r'^[-*]\s*', '', clean_text)
             p = doc.add_paragraph(bullet_text, style='List Bullet')
             if in_toc_section:
                 p.paragraph_format.left_indent = Inches(0.4)
         else:
-            # Handle plain body text or TOC sub-items
             p = doc.add_paragraph(clean_text)
             if in_toc_section and len(clean_text) > 3 and clean_text[0].isdigit():
                  p.paragraph_format.left_indent = Inches(0.4)
             
-            # Segregation bolding logic for key category labels in Project Overview
             if any(key in upper_text for key in ["DEPENDENCIES:", "ASSUMPTIONS:", "SPONSOR:", "CONTACTS:"]):
                 if p.runs:
                     p.runs[0].bold = True
@@ -249,25 +237,22 @@ with st.sidebar:
     st.divider()
     st.header("📋 1. Project Intake")
 
-    solution_options = [
-        "Multi Agent Store Advisor", "Intelligent Search", "Recommendation", 
-        "AI Agents Demand Forecasting", "Banner Audit using LLM", "Image Enhancement", 
-        "Virtual Try-On", "Agentic AI L1 Support", "Product Listing Standardization", 
-        "AI Agents Based Pricing Module", "Cost, Margin Visibility & Insights using LLM", 
-        "AI Trend Simulator", "Virtual Data Analyst (Text to SQL)", "Multilingual Call Analysis", 
-        "Customer Review Analysis", "Sales Co-Pilot", "Research Co-Pilot", 
-        "Product Copy Generator", "Multi-agent e-KYC & Onboarding", "Document / Report Audit", 
-        "RBI Circular Scraping & Insights Bot", "Visual Inspection", 
-        "AIoT based CCTV Surveillance", "Multilingual Voice Bot", "SOP Creation", "Other (Please specify)"
+    # Consolidated SOW Type Dropdown
+    sow_type_options = [
+        "L1 Support Bot POC SOW",
+        "Ready Search POC Scope of Work Document",
+        "AI based Image Enhancement POC SOW",
+        "Beauty Advisor POC SOW",
+        "AI based Image Inspection POC SOW",
+        "Gen AI for SOP POC SOW",
+        "Project Scope Document",
+        "Gen AI Speech To Speech",
+        "PoC Scope Document"
     ]
-    solution_type = st.selectbox("1.1 Solution Type", solution_options)
-    final_solution = st.text_input("Specify Solution Name", placeholder="Enter solution...") if solution_type == "Other (Please specify)" else solution_type
-
-    engagement_options = ["Proof of Concept (PoC)", "Pilot", "MVP", "Production Rollout", "Assessment / Discovery", "Support"]
-    engagement_type = st.selectbox("1.2 Engagement Type", engagement_options)
+    selected_sow_name = st.selectbox("1.1 Scope of Work Type", sow_type_options)
 
     industry_options = ["Retail / E-commerce", "BFSI", "Manufacturing", "Telecom", "Healthcare", "Energy / Utilities", "Logistics", "Media", "Government", "Other (specify)"]
-    industry_type = st.selectbox("1.3 Industry / Domain", industry_options)
+    industry_type = st.selectbox("1.2 Industry / Domain", industry_options)
     final_industry = st.text_input("Specify Industry", placeholder="Enter industry...") if industry_type == "Other (specify)" else industry_type
 
     duration = st.text_input("Timeline / Duration", "4 Weeks")
@@ -334,14 +319,14 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
         st.error("⚠️ Business Objective is required.")
     else:
         import requests
-        with st.spinner(f"Architecting SOW for {final_solution}..."):
+        with st.spinner(f"Architecting {selected_sow_name}..."):
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={api_key}"
             
             def get_md(df):
                 return df.to_markdown(index=False)
 
             prompt_text = f"""
-            Generate a COMPLETE formal enterprise Scope of Work (SOW) for {final_solution} in {final_industry}.
+            Generate a COMPLETE formal enterprise Scope of Work (SOW) for {selected_sow_name} in {final_industry}.
             
             MANDATORY STRUCTURE:
             1 TABLE OF CONTENTS (Indented sub-items)
@@ -363,7 +348,7 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             - Use plain text output only for document content. No markdown symbols like bolding or italics in the body.
 
             INPUT DETAILS:
-            - Engagement Type: {engagement_type}
+            - SOW Document Type: {selected_sow_name}
             - Primary Objective: {objective}
             - Success Metrics: {', '.join(outcomes)}
             - Timeline: {duration}
@@ -415,7 +400,7 @@ if st.session_state.generated_sow:
     
     if st.button("💾 Prepare Microsoft Word Document"):
         branding_info = {
-            'solution_name': final_solution,
+            'sow_name': selected_sow_name,
             'aws_pn_logo_bytes': aws_pn_logo.getvalue() if aws_pn_logo else None,
             'customer_logo_bytes': customer_logo.getvalue() if customer_logo else None,
             'oneture_logo_bytes': oneture_logo.getvalue() if oneture_logo else None,
@@ -428,7 +413,8 @@ if st.session_state.generated_sow:
         st.download_button(
             label="📥 Download Now (.docx)", 
             data=docx_data, 
-            file_name=f"SOW_{final_solution.replace(' ', '_')}.docx", 
+            file_name=f"SOW_{selected_sow_name.replace(' ', '_')}.docx", 
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
             use_container_width=True
         )
+
