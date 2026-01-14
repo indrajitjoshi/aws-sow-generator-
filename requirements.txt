@@ -4,3 +4,8 @@ requests
 python-docx
 tabulate
 graphviz
+quote
+json
+datetime
+io
+re
