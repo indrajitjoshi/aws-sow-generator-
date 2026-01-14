@@ -4,6 +4,7 @@ import io
 import re
 import json
 import requests
+import time
 from urllib.parse import quote
 
 # --- CONFIGURATION ---
@@ -76,6 +77,35 @@ PATTERN_MAPPING = {
     "Multilingual Voice Bot": "VOICE_AI",
     "SOP Creation": "AGENTIC_RAG"
 }
+
+# --- API HELPER WITH EXPONENTIAL BACKOFF ---
+def make_api_call(url, payload):
+    """
+    Handles API calls with exponential backoff to manage 429 Rate Limit errors.
+    Retries up to 5 times with delays of 1s, 2s, 4s, 8s, 16s.
+    """
+    retries = 5
+    for i in range(retries):
+        try:
+            response = requests.post(url, json=payload)
+            if response.status_code == 200:
+                return response
+            elif response.status_code == 429:
+                if i < retries - 1:
+                    time.sleep(2**i)
+                    continue
+                else:
+                    st.error("API Error: Quota exceeded. Please wait a moment and try again.")
+                    return response
+            else:
+                return response
+        except Exception as e:
+            if i < retries - 1:
+                time.sleep(2**i)
+                continue
+            else:
+                raise e
+    return None
 
 # --- ENHANCED DIAGRAM GENERATOR (Subgraphs & Flow Mapping) ---
 def generate_architecture_dot(arch_json):
@@ -229,7 +259,7 @@ def create_docx_logic(text_content, branding_info, diagram_image=None):
                     doc.add_paragraph("[Error rendering diagram image]")
                 arch_section_injected = True
         elif line.startswith('|'):
-            # Table logic handled by external processor usually, here simplified
+            # Simple table processor placeholder
             p = doc.add_paragraph(line)
         elif line.startswith('# '): doc.add_heading(clean_text, level=1)
         elif line.startswith('## '): doc.add_heading(clean_text, level=2)
@@ -372,16 +402,16 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             RULES: Professional tone. Plain text only. No markdown bolding marks (**).
             """
             
-            res_sow = requests.post(url, json={"contents": [{"parts": [{"text": prompt_sow}]}]})
-            if res_sow.status_code == 200:
+            res_sow = make_api_call(url, {"contents": [{"parts": [{"text": prompt_sow}]}]})
+            if res_sow and res_sow.status_code == 200:
                 st.session_state.generated_sow = res_sow.json()['candidates'][0]['content']['parts'][0]['text']
             
             prompt_arch = f"""
             Generate JSON for AWS Architecture: {final_solution}, Pattern: {pattern}.
             Include: ui, orchestration, llm (provider, model_family), agent_framework, vector_store, data_sources.
             """
-            res_arch = requests.post(url, json={"contents": [{"parts": [{"text": prompt_arch}]}], "generationConfig": {"responseMimeType": "application/json"}})
-            if res_arch.status_code == 200:
+            res_arch = make_api_call(url, {"contents": [{"parts": [{"text": prompt_arch}]}], "generationConfig": {"responseMimeType": "application/json"}})
+            if res_arch and res_arch.status_code == 200:
                 arch_json = json.loads(res_arch.json()['candidates'][0]['content']['parts'][0]['text'])
                 dot_str = generate_architecture_dot(arch_json)
                 st.session_state.arch_dot_string = dot_str
