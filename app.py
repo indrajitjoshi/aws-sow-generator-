@@ -1,6 +1,5 @@
 import streamlit as st
 from datetime import date
-import diagrams 
 import io
 import re
 import json
@@ -115,79 +114,109 @@ def make_api_call(url, payload):
 
 # --- ENHANCED DIAGRAM GENERATOR ---
 def generate_architecture_dot(arch_json):
+    """
+    Creates a high-fidelity layered DOT string matching the reference images.
+    """
     ui = arch_json.get('ui', {}) if isinstance(arch_json.get('ui'), dict) else {"type": str(arch_json.get('ui', 'Web App'))}
     orch = arch_json.get('orchestration', {}) if isinstance(arch_json.get('orchestration'), dict) else {"service": str(arch_json.get('orchestration', 'AWS Lambda'))}
     llm_info = arch_json.get('llm', {}) if isinstance(arch_json.get('llm'), dict) else {"provider": "Amazon Bedrock", "model_family": "Mistral"}
     
     dot = [
         'digraph G {',
-        '  rankdir=LR; compound=true; newrank=true; splines=ortho;',
-        '  nodesep=0.6; ranksep=1.2;',
-        '  node [shape=rect, style="rounded,filled", fontname="Arial Bold", fontsize=10, margin="0.2,0.1"];',
-        '  edge [fontname="Arial", fontsize=9, color="#64748b", fontcolor="#334155"];',
+        '  rankdir=LR; compound=true; newrank=true; splines=polyline;',
+        '  nodesep=0.7; ranksep=1.3;',
+        '  node [shape=rect, style="rounded,filled", fontname="Arial Bold", fontsize=10, margin="0.25,0.15", penwidth=1.5];',
+        '  edge [fontname="Arial", fontsize=9, color="#64748b", fontcolor="#1e293b", penwidth=1.2];',
         '',
-        '  # Layer 1: Client Layer',
+        '  # Layer 1: Client Environment',
         '  subgraph cluster_0 {',
-        '    label="Client / User Layer"; style="dashed,rounded"; color="#cbd5e1"; fontname="Arial Bold"; fontsize=11;',
-        f'    USER [label="User / Stakeholder", fillcolor="#f1f5f9", shape=circle, margin=0.1];',
-        f'    UI [label="Interface\\n({ui.get("type", "Streamlit")})", fillcolor="#3b82f6", fontcolor="white"];',
+        '    label="Customer Environment"; style="dashed,rounded"; color="#cbd5e1"; fontname="Arial Bold"; fontsize=12; margin=20;',
+        f'    USER [label="User / Admin", fillcolor="#ffffff", shape=circle, width=0.8];',
+        f'    UI [label="Frontend Interface\\n({ui.get("type", "Streamlit")})", fillcolor="#3b82f6", fontcolor="white"];',
         '  }',
         '',
-        '  # Layer 2: AWS VPC / Cloud',
+        '  # Layer 2: Core Orchestration (AWS Cloud)',
         '  subgraph cluster_1 {',
-        '    label="AWS Cloud (VPC)"; style="rounded"; bgcolor="#f8fafc"; color="#FF9900"; fontname="Arial Bold"; fontsize=11; penwidth=2;',
-        f'    ORCH [label="Orchestrator\\n({orch.get("service", "Lambda")})", fillcolor="#10b981", fontcolor="white"];',
+        '    label="AWS Cloud (VPC)"; style="rounded"; bgcolor="#f8fafc"; color="#FF9900"; fontname="Arial Bold"; fontsize=12; penwidth=3; margin=25;',
+        f'    ORCH [label="Orchestrator\\n({orch.get("service", "AWS Lambda")})", fillcolor="#10b981", fontcolor="white"];',
+        '    REASON [label="Reasoning Engine\\n(Agentic Control)", fillcolor="#8b5cf6", fontcolor="white", style="rounded,filled,dashed"];',
+        '  }',
+        '',
+        '  # Layer 3: AI & Data Services',
+        '  subgraph cluster_2 {',
+        '    label="GenAI & Foundation Services"; style="rounded"; color="#232F3E"; fontname="Arial Bold"; fontsize=12; margin=25;',
+        f'    LLM [label="Amazon Bedrock\\n{llm_info.get("model_family", "Mistral")}", fillcolor="#FF9900", fontcolor="white"];',
+        '',
+        '    subgraph cluster_data {',
+        '      label="Knowledge Store"; color="#94a3b8"; style="dashed,rounded";',
+        f'      VS [label="Vector Database\\n({arch_json.get("vector_store", "OpenSearch")})", fillcolor="#64748b", fontcolor="white"];',
+        f'      EMB [label="Embeddings\\n(Titan/HuggingFace)", fillcolor="#64748b", fontcolor="white"];',
+        '    }',
         '    ',
-        '    if_framework [style=invis, shape=point, width=0];'
+        '    if arch_json.get("data_sources"):',
+        f'      DATA [label="Enterprise Data\\n(S3/PDF/RDS)", fillcolor="#475569", fontcolor="white"];',
+        '  }',
+
+        '  # Connection Flow Logic',
+        '  USER -> UI [label="1. Query"];',
+        '  UI -> ORCH [label="2. Payload"];',
+        '  ORCH -> REASON [label="3. Decision"];',
+        '  REASON -> EMB [label="4. Vectorize"];',
+        '  EMB -> VS [label="5. Search"];',
+        '  VS -> REASON [label="6. Context"];',
+        '  REASON -> LLM [label="7. Prompt"];',
+        '  LLM -> UI [label="8. Response", constraint=false, style=dashed, color="#FF9900"];',
+        '',
+        '  if arch_json.get("data_sources"):',
+        '    DATA -> VS [label="Ingest", style=dotted];',
+
+        '}'
     ]
-
-    if arch_json.get('agent_framework'):
-        agent_fw = arch_json.get('agent_framework', [])
-        fw = ", ".join(agent_fw) if isinstance(agent_fw, list) else str(agent_fw)
-        dot.append(f'    FRAMEWORK [label="LLM Framework\\n({fw})", fillcolor="#8b5cf6", fontcolor="white"];')
-        dot.append('    ORCH -> FRAMEWORK [label="1. Process"];')
-        core_node = "FRAMEWORK"
-    else:
-        core_node = "ORCH"
-
-    dot.append('  }')
-    dot.append('')
     
-    # Layer 3: GenAI Services
-    dot.append('  subgraph cluster_2 {')
-    dot.append('    label="AI & Data Services"; style="rounded"; color="#232F3E"; fontname="Arial Bold"; fontsize=11;')
-    dot.append(f'    LLM [label="Amazon Bedrock\\n({llm_info.get("model_family", "Mistral")})", fillcolor="#FF9900", fontcolor="white"];')
+    # Cleaning up the dynamic list logic from above string list
+    final_dot = [
+        'digraph G {',
+        '  rankdir=LR; compound=true; newrank=true; splines=polyline;',
+        '  nodesep=0.7; ranksep=1.3;',
+        '  node [shape=rect, style="rounded,filled", fontname="Arial Bold", fontsize=10, margin="0.25,0.15", penwidth=1.5];',
+        '  edge [fontname="Arial", fontsize=9, color="#64748b", fontcolor="#1e293b", penwidth=1.2];',
+        '',
+        '  subgraph cluster_0 {',
+        '    label="Customer Environment"; style="dashed,rounded"; color="#cbd5e1"; fontname="Arial Bold"; fontsize=12; margin=20;',
+        f'    USER [label="User / Admin", fillcolor="#ffffff", shape=circle, width=0.8];',
+        f'    UI [label="Frontend Interface\\n({ui.get("type", "Streamlit")})", fillcolor="#3b82f6", fontcolor="white"];',
+        '  }',
+        '',
+        '  subgraph cluster_1 {',
+        '    label="AWS Cloud (VPC)"; style="rounded"; bgcolor="#f8fafc"; color="#FF9900"; fontname="Arial Bold"; fontsize=12; penwidth=3; margin=25;',
+        f'    ORCH [label="Orchestrator\\n({orch.get("service", "AWS Lambda")})", fillcolor="#10b981", fontcolor="white"];',
+        '    REASON [label="Reasoning Engine\\n(Agentic Control)", fillcolor="#8b5cf6", fontcolor="white", style="rounded,filled,dashed"];',
+        '  }',
+        '',
+        '  subgraph cluster_2 {',
+        '    label="GenAI & Foundation Services"; style="rounded"; color="#232F3E"; fontname="Arial Bold"; fontsize=12; margin=25;',
+        f'    LLM [label="Amazon Bedrock\\n{llm_info.get("model_family", "Mistral")}", fillcolor="#FF9900", fontcolor="white"];',
+        '    subgraph cluster_data {',
+        '      label="Knowledge Store"; color="#94a3b8"; style="dashed,rounded";',
+        f'      VS [label="Vector Store\\n({arch_json.get("vector_store", "OpenSearch")})", fillcolor="#64748b", fontcolor="white"];',
+        f'      EMB [label="Embeddings\\n(Titan)", fillcolor="#64748b", fontcolor="white"];',
+        '    }',
+        '    DATA [label="S3 / Textract\\n(Data Sources)", fillcolor="#475569", fontcolor="white"];',
+        '  }',
+        '',
+        '  USER -> UI [label="1. Input"];',
+        '  UI -> ORCH [label="2. Request"];',
+        '  ORCH -> REASON [label="3. Task"];',
+        '  REASON -> EMB [label="4. Search"];',
+        '  EMB -> VS [label="5. Lookup"];',
+        '  VS -> REASON [label="6. Context"];',
+        '  REASON -> LLM [label="7. Infer"];',
+        '  LLM -> UI [label="8. Output", constraint=false, style=dashed, color="#FF9900"];',
+        '  DATA -> VS [style=dotted, label="Ingest"];',
+        '}'
+    ]
     
-    if arch_json.get('vector_store'):
-        dot.append(f'    VS [label="Vector Store\\n({arch_json.get("vector_store")})", fillcolor="#64748b", fontcolor="white"];')
-        emb_service = arch_json.get('embeddings', {}).get('provider', 'Titan') if isinstance(arch_json.get('embeddings'), dict) else "Titan"
-        dot.append(f'    EMB [label="Embeddings\\n({emb_service})", fillcolor="#64748b", fontcolor="white"];')
-    
-    if arch_json.get('data_sources'):
-        sources = arch_json.get('data_sources', [])
-        source_label = "\\n".join(sources) if isinstance(sources, list) else str(sources)
-        dot.append(f'    DATA [label="Data Sources\\n({source_label})", fillcolor="#64748b", fontcolor="white"];')
-    
-    dot.append('  }')
-
-    # Final Wiring
-    dot.append('')
-    dot.append('  USER -> UI;')
-    dot.append('  UI -> ORCH [label="Input"];')
-    
-    if arch_json.get('vector_store'):
-        dot.append('  ORCH -> EMB [label="Vectorize"];')
-        dot.append('  EMB -> VS;')
-        dot.append('  DATA -> VS [style=dotted];')
-        dot.append('  VS -> ORCH [label="Context"];')
-        dot.append(f'  {core_node} -> LLM [label="Query"];')
-        dot.append('  LLM -> UI [label="Response", constraint=false];')
-    else:
-        dot.append(f'  {core_node} -> LLM;')
-        dot.append('  LLM -> UI [label="Response", constraint=false];')
-
-    dot.append('}')
-    return "\n".join(dot)
+    return "\n".join(final_dot)
 
 # --- WORD DOCUMENT GENERATOR ---
 def create_docx_logic(text_content, branding_info, diagram_image=None):
@@ -285,7 +314,7 @@ def create_docx_logic(text_content, branding_info, diagram_image=None):
         elif "4 SOLUTION ARCHITECTURE" in upper_text:
             doc.add_heading(clean_text, level=1)
             if diagram_image and not arch_section_injected:
-                doc.add_paragraph("The technical architecture on AWS is illustrated below:")
+                doc.add_paragraph("The following diagram illustrates the proposed technical architecture for this solution on AWS, designed for scalability and secure GenAI orchestration.")
                 try:
                     p_img = doc.add_paragraph(); p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     p_img.add_run().add_picture(io.BytesIO(diagram_image), width=Inches(6.0))
@@ -355,6 +384,7 @@ with brand_col2:
 
 st.divider()
 
+# --- STEP 2: OBJECTIVES & STAKEHOLDERS ---
 st.header("2. Objectives & Stakeholders")
 objective = st.text_area("2.1 Objective", placeholder="e.g., Development of a Gen AI based WIMO Bot...", height=100)
 outcomes = st.multiselect("Select success metrics:", ["Reduced Response Time", "Automated SOP Mapping", "Cost Savings", "Higher Accuracy", "Metadata Richness", "Revenue Growth", "Security Compliance", "Scalability", "Integration Feasibility"], default=["Higher Accuracy", "Cost Savings"])
@@ -382,7 +412,7 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
         with st.spinner("Generating Professional SOW & AWS Architecture..."):
             get_md = lambda df: df.to_markdown(index=False)
             prompt_sow = f"""
-            Generate a COMPLETE formal enterprise SOW for {final_solution} in {industry_type}.
+            Generate a COMPLETE formal enterprise Scope of Work (SOW) for {final_solution} in {industry_type}.
             
             MANDATORY STRUCTURE:
             1 TABLE OF CONTENTS
@@ -418,7 +448,8 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
 if st.session_state.generated_sow:
     st.divider(); st.header("3. Review & Export")
     tab_edit, tab_preview = st.tabs(["✍️ Editor", "📄 Preview"])
-    with tab_edit: st.session_state.generated_sow = st.text_area("SOW Content", value=st.session_state.generated_sow, height=500)
+    with tab_edit:
+        st.session_state.generated_sow = st.text_area("SOW Content", value=st.session_state.generated_sow, height=500)
     with tab_preview:
         st.markdown('<div class="sow-preview">', unsafe_allow_html=True)
         preview_text = st.session_state.generated_sow
@@ -429,7 +460,8 @@ if st.session_state.generated_sow:
             st.markdown(before)
             st.graphviz_chart(st.session_state.arch_dot_string)
             st.markdown(after)
-        else: st.markdown(preview_text)
+        else:
+            st.markdown(preview_text)
         st.markdown('</div>', unsafe_allow_html=True)
 
     if st.button("💾 Download .docx", use_container_width=True):
