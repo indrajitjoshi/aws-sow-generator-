@@ -79,12 +79,9 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # --- CACHED UTILITIES ---
-def create_docx_logic(text_content, branding_info):
+def create_docx_logic(text_content, branding_info, sow_type_name):
     """
     Generates the Word document with strict page isolation and markdown cleanup.
-    Page 1: Cover
-    Page 2: Table of Contents (Isolated)
-    Page 3: Project Overview (2.1 -> 2.2 -> 2.3 sequence)
     """
     from docx import Document
     from docx.shared import Inches, Pt, RGBColor
@@ -145,7 +142,6 @@ def create_docx_logic(text_content, branding_info):
     run.font.size = Pt(12)
     run.font.bold = True
     
-    # End Page 1
     doc.add_page_break()
     
     # --- CONTENT PROCESSING ---
@@ -170,6 +166,22 @@ def create_docx_logic(text_content, branding_info):
         line_clean = re.sub(r'\*+', '', line).strip()
         clean_text = re.sub(r'^#+\s*', '', line_clean).strip()
         upper_text = clean_text.upper()
+
+        # Trigger for Section 4: Insert Architecture Diagram
+        if "4 SOLUTION ARCHITECTURE" in upper_text and (line.startswith('#') or line.startswith('4')):
+            doc.add_heading(clean_text, level=1)
+            diagram_path = SOW_DIAGRAM_MAP.get(sow_type_name)
+            if diagram_path and os.path.exists(diagram_path):
+                doc.add_paragraph("")
+                try:
+                    doc.add_picture(diagram_path, width=Inches(6.0))
+                    p_cap = doc.add_paragraph(f"{sow_type_name} – Architecture Diagram")
+                    p_cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                except:
+                    doc.add_paragraph("[Architecture Diagram - Missing or Incompatible Format]")
+                doc.add_paragraph("")
+            i += 1
+            continue
 
         if ("2 PROJECT OVERVIEW" in upper_text) and (line.startswith('#') or line.startswith('2')) and not overview_started:
             doc.add_page_break()
@@ -270,7 +282,6 @@ with st.sidebar:
     st.divider()
     st.header("📋 1. Project Intake")
 
-    # Consolidated SOW Type Dropdown
     sow_type_options = [
         "L1 Support Bot POC SOW",
         "Ready Search POC Scope of Work Document",
@@ -284,19 +295,14 @@ with st.sidebar:
     ]
     selected_sow_name = st.selectbox("1.1 Scope of Work Type", sow_type_options)
 
-    # Solution Architecture Diagram Display
+    # Sidebar architecture preview
     st.divider()
-    st.header("🧩 Solution Architecture Diagram")
-
-    diagram_path = SOW_DIAGRAM_MAP.get(selected_sow_name)
-    if diagram_path and os.path.exists(diagram_path):
-        st.image(
-            diagram_path,
-            caption=f"{selected_sow_name} – Architecture Diagram",
-            use_container_width=True
-        )
+    st.header("🧩 Architecture Preview")
+    diagram_path_sidebar = SOW_DIAGRAM_MAP.get(selected_sow_name)
+    if diagram_path_sidebar and os.path.exists(diagram_path_sidebar):
+        st.image(diagram_path_sidebar, caption="Architecture Diagram", use_container_width=True)
     else:
-        st.warning("No architecture diagram available for this SOW type.")
+        st.warning("No architecture diagram available.")
 
     st.divider()
     industry_options = ["Retail / E-commerce", "BFSI", "Manufacturing", "Telecom", "Healthcare", "Energy / Utilities", "Logistics", "Media", "Government", "Other (specify)"]
@@ -441,7 +447,19 @@ if st.session_state.generated_sow:
     
     with tab_preview:
         st.markdown(f'<div class="sow-preview">', unsafe_allow_html=True)
-        st.markdown(st.session_state.generated_sow)
+        # Regex search for Section 4 header to inject diagram in visual preview
+        header_pattern = r'(?i)(^#*\s*4\s+SOLUTION ARCHITECTURE.*)'
+        match = re.search(header_pattern, st.session_state.generated_sow, re.MULTILINE)
+        
+        if match:
+            start, end = match.span()
+            st.markdown(st.session_state.generated_sow[:end])
+            diagram_path_out = SOW_DIAGRAM_MAP.get(selected_sow_name)
+            if diagram_path_out and os.path.exists(diagram_path_out):
+                st.image(diagram_path_out, caption=f"{selected_sow_name} Architecture", use_container_width=True)
+            st.markdown(st.session_state.generated_sow[end:])
+        else:
+            st.markdown(st.session_state.generated_sow)
         st.markdown('</div>', unsafe_allow_html=True)
     
     st.write("")
@@ -456,7 +474,8 @@ if st.session_state.generated_sow:
             'doc_date_str': doc_date.strftime("%d %B %Y")
         }
         
-        docx_data = create_docx_logic(st.session_state.generated_sow, branding_info)
+        # Passing selected_sow_name to logic to ensure image is mapped during export
+        docx_data = create_docx_logic(st.session_state.generated_sow, branding_info, selected_sow_name)
         
         st.download_button(
             label="📥 Download Now (.docx)", 
@@ -465,4 +484,3 @@ if st.session_state.generated_sow:
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
             use_container_width=True
         )
-
