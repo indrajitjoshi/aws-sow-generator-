@@ -1,5 +1,6 @@
 import streamlit as st
 from datetime import date
+import diagrams 
 import io
 import re
 import json
@@ -441,3 +442,4 @@ if st.session_state.generated_sow:
         }
         docx_data = create_docx_logic(st.session_state.generated_sow, branding, st.session_state.arch_diagram_bytes)
         st.download_button("📥 Save Now", docx_data, file_name=f"SOW_{final_solution.replace(' ', '_')}.docx")
+
