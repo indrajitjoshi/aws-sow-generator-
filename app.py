@@ -1,25 +1,23 @@
 import streamlit as st
 from datetime import date
-import io, re, os, requests
-import pandas as pd
+import io, os, requests
 
-# ================= AWS DIAGRAM IMPORTS =================
+# ================= AWS DIAGRAM IMPORTS (CORRECTED) =================
 from diagrams import Diagram, Cluster
 from diagrams.aws.general import User
 from diagrams.aws.compute import Lambda, EC2
 from diagrams.aws.ml import Bedrock, Textract, Rekognition
 from diagrams.aws.storage import S3
-from diagrams.aws.database import OpenSearch, RDS
-from diagrams.aws.analytics import Kinesis
+from diagrams.aws.analytics import OpenSearchService, Kinesis
+from diagrams.aws.database import RDS
 from diagrams.aws.iot import IotCore
-# ======================================================
+# ==================================================================
 
 # ================= PAGE CONFIG =================
 st.set_page_config(
     page_title="GenAI SOW Architect",
     layout="wide",
-    page_icon="📄",
-    initial_sidebar_state="expanded"
+    page_icon="📄"
 )
 
 # ================= ARCHITECTURE PATTERN MAP =================
@@ -67,7 +65,6 @@ def generate_architecture_spec(solution):
         "pattern": pattern,
         "security_boundary": "Customer VPC",
         "vector_store": pattern in ["RAG_TEXT", "AGENTIC_RAG"],
-        "data_sources": ["S3", "Textract"],
         "extras": []
     }
 
@@ -82,19 +79,31 @@ def generate_architecture_spec(solution):
 
 # ================= DIAGRAM RENDERER =================
 def render_architecture_diagram(spec):
-    fname = f"architecture_{spec['title'].replace(' ', '_')}"
-    with Diagram(spec["title"], filename=fname, show=False, direction="LR"):
+    filename = f"architecture_{spec['title'].replace(' ', '_')}"
+
+    with Diagram(
+        spec["title"],
+        filename=filename,
+        show=False,
+        direction="LR"
+    ):
         user = User("User")
+
         with Cluster("AWS Cloud"):
             with Cluster(spec["security_boundary"]):
                 ui = EC2("Streamlit UI")
-                orchestrator = Lambda("Query + Agent Orchestration")
+                orchestrator = Lambda("Agent / Query Orchestration")
                 llm = Bedrock("Amazon Bedrock\n(Mistral)")
+
                 components = []
 
                 if spec["vector_store"]:
-                    components.append(OpenSearch("Vector DB"))
-                components += [S3("Documents"), Textract("OCR")]
+                    components.append(OpenSearchService("Vector Store"))
+
+                components.extend([
+                    S3("Documents"),
+                    Textract("OCR")
+                ])
 
                 if "Rekognition" in spec["extras"]:
                     components.append(Rekognition("Vision AI"))
@@ -105,23 +114,24 @@ def render_architecture_diagram(spec):
 
                 db = RDS("Application DB")
 
+        # FLOW
         user >> ui >> orchestrator >> llm
         for c in components:
             orchestrator >> c >> orchestrator
         orchestrator >> db
         orchestrator >> ui
 
-    return f"{fname}.png"
+    return f"{filename}.png"
 
 # ================= DOCX GENERATOR =================
-def create_docx(text, diagram_path, solution_name, doc_date):
+def create_docx(text, diagram_path, solution_name):
     from docx import Document
     from docx.shared import Inches
 
     doc = Document()
     doc.add_heading(solution_name, 0)
     doc.add_paragraph("Scope of Work Document")
-    doc.add_paragraph(doc_date.strftime("%d %B %Y"))
+    doc.add_paragraph(date.today().strftime("%d %B %Y"))
     doc.add_page_break()
 
     for line in text.split("\n"):
@@ -129,6 +139,7 @@ def create_docx(text, diagram_path, solution_name, doc_date):
 
     doc.add_page_break()
     doc.add_heading("4 SOLUTION ARCHITECTURE / ARCHITECTURAL DIAGRAM", 1)
+
     if diagram_path and os.path.exists(diagram_path):
         doc.add_picture(diagram_path, width=Inches(6.5))
 
@@ -142,21 +153,21 @@ if "sow" not in st.session_state:
 
 # ================= SIDEBAR =================
 with st.sidebar:
-    st.title("SOW Architect")
+    st.title("GenAI SOW Architect")
+
     api_key = st.text_input("Gemini API Key", type="password")
 
     solution = st.selectbox("Solution Type", list(ARCH_PATTERN_MAP.keys()))
-    engagement = st.selectbox("Engagement Type", [
-        "Proof of Concept (PoC)", "Pilot", "MVP",
-        "Production Rollout", "Assessment / Discovery"
-    ])
-    industry = st.selectbox("Industry", [
-        "Retail / E-commerce", "BFSI", "Healthcare", "Manufacturing",
-        "Telecom", "Government", "Other"
-    ])
-    timeline = st.text_input("Timeline", "4 Weeks")
+    engagement = st.selectbox(
+        "Engagement Type",
+        ["Proof of Concept (PoC)", "Pilot", "MVP", "Production Rollout", "Assessment / Discovery"]
+    )
+    industry = st.selectbox(
+        "Industry",
+        ["Retail / E-commerce", "BFSI", "Healthcare", "Manufacturing", "Telecom", "Government", "Other"]
+    )
 
-# ================= MAIN UI =================
+# ================= MAIN =================
 st.title("🚀 GenAI Scope of Work Architect")
 
 objective = st.text_area(
@@ -166,10 +177,10 @@ objective = st.text_area(
 
 if st.button("✨ Generate SOW + Architecture", use_container_width=True):
     if not api_key or not objective:
-        st.error("API Key and Objective are required")
+        st.error("Gemini API Key and Objective are required.")
     else:
         with st.spinner("Generating SOW and Architecture..."):
-            # ---- Gemini Call ----
+
             prompt = f"""
 Generate a COMPLETE enterprise Scope of Work (SOW).
 
@@ -188,27 +199,21 @@ INPUTS:
 Solution: {solution}
 Industry: {industry}
 Engagement Type: {engagement}
-Timeline: {timeline}
 Objective: {objective}
 
 Rules:
-- No markdown symbols
 - Plain text only
 - Strict numbering
 """
 
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={api_key}"
-            payload = {
-                "contents": [{"parts": [{"text": prompt}]}]
-            }
+            payload = {"contents": [{"parts": [{"text": prompt}]}]}
 
-            res = requests.post(url, json=payload)
-            st.session_state.sow = res.json()["candidates"][0]["content"]["parts"][0]["text"]
+            response = requests.post(url, json=payload).json()
+            st.session_state.sow = response["candidates"][0]["content"]["parts"][0]["text"]
 
-            # ---- Architecture ----
             spec = generate_architecture_spec(solution)
-            diagram_path = render_architecture_diagram(spec)
-            st.session_state.diagram = diagram_path
+            st.session_state.diagram = render_architecture_diagram(spec)
 
 # ================= OUTPUT =================
 if st.session_state.sow:
@@ -221,16 +226,15 @@ if "diagram" in st.session_state:
     st.header("🧱 Solution Architecture")
     st.image(st.session_state.diagram, use_column_width=True)
 
-    docx = create_docx(
+    docx_bytes = create_docx(
         st.session_state.sow,
         st.session_state.diagram,
-        solution,
-        date.today()
+        solution
     )
 
     st.download_button(
         "📥 Download SOW (.docx)",
-        data=docx,
+        data=docx_bytes,
         file_name=f"SOW_{solution.replace(' ', '_')}.docx",
         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     )
