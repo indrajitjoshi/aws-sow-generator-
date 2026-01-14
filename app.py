@@ -132,20 +132,20 @@ def generate_architecture_dot(arch_json):
         '  # Layer 1: Customer / Frontend',
         '  subgraph cluster_0 {',
         '    label="Customer Environment"; style="dashed,rounded"; color="#cbd5e1"; fontname="Arial Bold"; fontsize=11;',
-        f'    UI [label="User Interface\\n({ui.get("type", "Web App")})", fillcolor="#3b82f6", fontcolor=white];',
+        f'    UI [label="User Interface\\n({ui.get("type", "Web App")})", fillcolor="#3b82f6", fontcolor="white"];',
         '  }',
         '',
         '  # Layer 2: Core Orchestration',
         '  subgraph cluster_1 {',
         '    label="AWS Cloud (VPC)"; style="rounded"; bgcolor="#f8fafc"; color="#94a3b8"; fontname="Arial Bold"; fontsize=11;',
-        f'    ORCH [label="Orchestrator\\n({orch.get("service", "AWS Lambda")})", fillcolor="#10b981", fontcolor=white];',
+        f'    ORCH [label="Orchestrator\\n({orch.get("service", "AWS Lambda")})", fillcolor="#10b981", fontcolor="white"];',
         '    ',
         '    if_framework [style=invis, shape=point, width=0];'
     ]
 
     if arch_json.get('agent_framework'):
         fw = ", ".join(arch_json.get('agent_framework', []))
-        dot.append(f'    FRAMEWORK [label="Agent Framework\\n({fw})", fillcolor="#8b5cf6", fontcolor=white];')
+        dot.append(f'    FRAMEWORK [label="Agent Framework\\n({fw})", fillcolor="#8b5cf6", fontcolor="white"];')
         dot.append('    ORCH -> FRAMEWORK [label="1. Orchestrate"];')
         core_node = "FRAMEWORK"
     else:
@@ -157,15 +157,16 @@ def generate_architecture_dot(arch_json):
     # Layer 3: GenAI Services
     dot.append('  subgraph cluster_2 {')
     dot.append('    label="GenAI & Data Services"; style="rounded"; color="#94a3b8"; fontname="Arial Bold"; fontsize=11;')
-    dot.append(f'    LLM [label="Model Provider\\n{llm_info.get("provider", "Amazon Bedrock")}\\n({llm_info.get("model_family", "Mistral")})", fillcolor="#f59e0b", fontcolor=white];')
+    dot.append(f'    LLM [label="Model Provider\\n{llm_info.get("provider", "Amazon Bedrock")}\\n({llm_info.get("model_family", "Mistral")})", fillcolor="#f59e0b", fontcolor="white"];')
     
     if arch_json.get('vector_store'):
-        dot.append(f'    VS [label="Vector Store\\n({arch_json.get("vector_store")})", fillcolor="#64748b", fontcolor=white];')
-        dot.append(f'    EMB [label="Embedding Model\\n({arch_json.get("embeddings", {}).get("provider", "Titan")})", fillcolor="#64748b", fontcolor=white];')
+        dot.append(f'    VS [label="Vector Store\\n({arch_json.get("vector_store")})", fillcolor="#64748b", fontcolor="white"];')
+        dot.append(f'    EMB [label="Embedding Model\\n({arch_json.get("embeddings", {}).get("provider", "Titan")})", fillcolor="#64748b", fontcolor="white"];')
     
     if arch_json.get('databases'):
-        db_name = arch_json.get('databases')[0]
-        dot.append(f'    DB [label="Database\\n({db_name})", fillcolor="#64748b", fontcolor=white];')
+        db_names = arch_json.get('databases', [])
+        db_name = db_names[0] if isinstance(db_names, list) and db_names else "Database"
+        dot.append(f'    DB [label="Database\\n({db_name})", fillcolor="#64748b", fontcolor="white"];')
     
     dot.append('  }')
 
