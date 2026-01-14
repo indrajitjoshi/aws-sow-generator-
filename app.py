@@ -2,24 +2,6 @@ import streamlit as st
 from datetime import date
 import io
 import re
-import json
-import requests
-import time
-import random
-from urllib.parse import quote
-
-# Check for specialized AWS diagramming library
-AWS_DIAGRAMS_AVAILABLE = True
-try:
-    from diagrams import Diagram, Cluster
-    from diagrams.aws.general import User
-    from diagrams.aws.compute import Lambda, EC2
-    from diagrams.aws.ml import Bedrock, Textract, Rekognition
-    from diagrams.aws.storage import S3
-    from diagrams.aws.analytics import OpenSearchService
-    from diagrams.aws.database import RDS
-except Exception:
-    AWS_DIAGRAMS_AVAILABLE = False
 
 # --- CONFIGURATION ---
 st.set_page_config(
@@ -63,229 +45,123 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- ARCHITECTURE PATTERN MAPPING ---
-PATTERN_MAPPING = {
-    "Multi Agent Store Advisor": "AGENTIC_RAG",
-    "Intelligent Search": "RAG_TEXT",
-    "Recommendation": "RECOMMENDER",
-    "AI Agents Demand Forecasting": "RECOMMENDER",
-    "Banner Audit using LLM": "VISION_LLM",
-    "Image Enhancement": "VISION_LLM",
-    "Virtual Try-On": "VISION_LLM",
-    "Agentic AI L1 Support": "AGENTIC_RAG",
-    "Product Listing Standardization": "CONTENT_GEN",
-    "AI Agents Based Pricing Module": "RECOMMENDER",
-    "Cost, Margin Visibility & Insights using LLM": "RAG_TEXT",
-    "AI Trend Simulator": "RECOMMENDER",
-    "Virtual Data Analyst (Text to SQL)": "TEXT_TO_SQL",
-    "Multilingual Call Analysis": "VOICE_AI",
-    "Customer Review Analysis": "RAG_TEXT",
-    "Sales Co-Pilot": "AGENTIC_RAG",
-    "Research Co-Pilot": "AGENTIC_RAG",
-    "Product Copy Generator": "CONTENT_GEN",
-    "Multi-agent e-KYC & Onboarding": "AGENTIC_RAG",
-    "Document / Report Audit": "RAG_TEXT",
-    "RBI Circular Scraping & Insights Bot": "RAG_TEXT",
-    "Visual Inspection": "VISION_LLM",
-    "AIoT based CCTV Surveillance": "IOT_STREAM",
-    "Multilingual Voice Bot": "VOICE_AI",
-    "SOP Creation": "AGENTIC_RAG"
-}
-
-# --- API HELPER WITH EXPONENTIAL BACKOFF AND JITTER ---
-def make_api_call(url, payload):
-    retries = 5
-    base_delay = 2
-    for i in range(retries):
-        try:
-            response = requests.post(url, json=payload)
-            if response.status_code == 200:
-                return response
-            elif response.status_code == 429:
-                delay = (base_delay ** (i + 1)) + random.uniform(0, 1)
-                time.sleep(delay)
-                continue
-            else:
-                return response
-        except Exception:
-            time.sleep(base_delay ** i)
-            continue
-    return None
-
-# --- ENHANCED DIAGRAM GENERATOR ---
-def generate_architecture_dot(arch_json):
+# --- CACHED UTILITIES ---
+def create_docx_logic(text_content, branding_info):
     """
-    Creates a high-fidelity layered DOT string matching the reference images.
+    Generates the Word document with strict page isolation and markdown cleanup.
+    Page 1: Cover
+    Page 2: Table of Contents (Isolated)
+    Page 3: Project Overview (2.1 -> 2.2 -> 2.3 sequence)
     """
-    ui = arch_json.get('ui', {}) if isinstance(arch_json.get('ui'), dict) else {"type": str(arch_json.get('ui', 'Web App'))}
-    orch = arch_json.get('orchestration', {}) if isinstance(arch_json.get('orchestration'), dict) else {"service": str(arch_json.get('orchestration', 'AWS Lambda'))}
-    llm_info = arch_json.get('llm', {}) if isinstance(arch_json.get('llm'), dict) else {"provider": "Amazon Bedrock", "model_family": "Mistral"}
-    
-    dot = [
-        'digraph G {',
-        '  rankdir=LR; compound=true; newrank=true; splines=polyline;',
-        '  nodesep=0.7; ranksep=1.3;',
-        '  node [shape=rect, style="rounded,filled", fontname="Arial Bold", fontsize=10, margin="0.25,0.15", penwidth=1.5];',
-        '  edge [fontname="Arial", fontsize=9, color="#64748b", fontcolor="#1e293b", penwidth=1.2];',
-        '',
-        '  # Layer 1: Client Environment',
-        '  subgraph cluster_0 {',
-        '    label="Customer Environment"; style="dashed,rounded"; color="#cbd5e1"; fontname="Arial Bold"; fontsize=12; margin=20;',
-        f'    USER [label="User / Admin", fillcolor="#ffffff", shape=circle, width=0.8];',
-        f'    UI [label="Frontend Interface\\n({ui.get("type", "Streamlit")})", fillcolor="#3b82f6", fontcolor="white"];',
-        '  }',
-        '',
-        '  # Layer 2: Core Orchestration (AWS Cloud)',
-        '  subgraph cluster_1 {',
-        '    label="AWS Cloud (VPC)"; style="rounded"; bgcolor="#f8fafc"; color="#FF9900"; fontname="Arial Bold"; fontsize=12; penwidth=3; margin=25;',
-        f'    ORCH [label="Orchestrator\\n({orch.get("service", "AWS Lambda")})", fillcolor="#10b981", fontcolor="white"];',
-        '    REASON [label="Reasoning Engine\\n(Agentic Control)", fillcolor="#8b5cf6", fontcolor="white", style="rounded,filled,dashed"];',
-        '  }',
-        '',
-        '  # Layer 3: AI & Data Services',
-        '  subgraph cluster_2 {',
-        '    label="GenAI & Foundation Services"; style="rounded"; color="#232F3E"; fontname="Arial Bold"; fontsize=12; margin=25;',
-        f'    LLM [label="Amazon Bedrock\\n{llm_info.get("model_family", "Mistral")}", fillcolor="#FF9900", fontcolor="white"];',
-        '',
-        '    subgraph cluster_data {',
-        '      label="Knowledge Store"; color="#94a3b8"; style="dashed,rounded";',
-        f'      VS [label="Vector Database\\n({arch_json.get("vector_store", "OpenSearch")})", fillcolor="#64748b", fontcolor="white"];',
-        f'      EMB [label="Embeddings\\n(Titan/HuggingFace)", fillcolor="#64748b", fontcolor="white"];',
-        '    }',
-        '    ',
-        '    if arch_json.get("data_sources"):',
-        f'      DATA [label="Enterprise Data\\n(S3/PDF/RDS)", fillcolor="#475569", fontcolor="white"];',
-        '  }',
-
-        '  # Connection Flow Logic',
-        '  USER -> UI [label="1. Query"];',
-        '  UI -> ORCH [label="2. Payload"];',
-        '  ORCH -> REASON [label="3. Decision"];',
-        '  REASON -> EMB [label="4. Vectorize"];',
-        '  EMB -> VS [label="5. Search"];',
-        '  VS -> REASON [label="6. Context"];',
-        '  REASON -> LLM [label="7. Prompt"];',
-        '  LLM -> UI [label="8. Response", constraint=false, style=dashed, color="#FF9900"];',
-        '',
-        '  if arch_json.get("data_sources"):',
-        '    DATA -> VS [label="Ingest", style=dotted];',
-
-        '}'
-    ]
-    
-    # Cleaning up the dynamic list logic from above string list
-    final_dot = [
-        'digraph G {',
-        '  rankdir=LR; compound=true; newrank=true; splines=polyline;',
-        '  nodesep=0.7; ranksep=1.3;',
-        '  node [shape=rect, style="rounded,filled", fontname="Arial Bold", fontsize=10, margin="0.25,0.15", penwidth=1.5];',
-        '  edge [fontname="Arial", fontsize=9, color="#64748b", fontcolor="#1e293b", penwidth=1.2];',
-        '',
-        '  subgraph cluster_0 {',
-        '    label="Customer Environment"; style="dashed,rounded"; color="#cbd5e1"; fontname="Arial Bold"; fontsize=12; margin=20;',
-        f'    USER [label="User / Admin", fillcolor="#ffffff", shape=circle, width=0.8];',
-        f'    UI [label="Frontend Interface\\n({ui.get("type", "Streamlit")})", fillcolor="#3b82f6", fontcolor="white"];',
-        '  }',
-        '',
-        '  subgraph cluster_1 {',
-        '    label="AWS Cloud (VPC)"; style="rounded"; bgcolor="#f8fafc"; color="#FF9900"; fontname="Arial Bold"; fontsize=12; penwidth=3; margin=25;',
-        f'    ORCH [label="Orchestrator\\n({orch.get("service", "AWS Lambda")})", fillcolor="#10b981", fontcolor="white"];',
-        '    REASON [label="Reasoning Engine\\n(Agentic Control)", fillcolor="#8b5cf6", fontcolor="white", style="rounded,filled,dashed"];',
-        '  }',
-        '',
-        '  subgraph cluster_2 {',
-        '    label="GenAI & Foundation Services"; style="rounded"; color="#232F3E"; fontname="Arial Bold"; fontsize=12; margin=25;',
-        f'    LLM [label="Amazon Bedrock\\n{llm_info.get("model_family", "Mistral")}", fillcolor="#FF9900", fontcolor="white"];',
-        '    subgraph cluster_data {',
-        '      label="Knowledge Store"; color="#94a3b8"; style="dashed,rounded";',
-        f'      VS [label="Vector Store\\n({arch_json.get("vector_store", "OpenSearch")})", fillcolor="#64748b", fontcolor="white"];',
-        f'      EMB [label="Embeddings\\n(Titan)", fillcolor="#64748b", fontcolor="white"];',
-        '    }',
-        '    DATA [label="S3 / Textract\\n(Data Sources)", fillcolor="#475569", fontcolor="white"];',
-        '  }',
-        '',
-        '  USER -> UI [label="1. Input"];',
-        '  UI -> ORCH [label="2. Request"];',
-        '  ORCH -> REASON [label="3. Task"];',
-        '  REASON -> EMB [label="4. Search"];',
-        '  EMB -> VS [label="5. Lookup"];',
-        '  VS -> REASON [label="6. Context"];',
-        '  REASON -> LLM [label="7. Infer"];',
-        '  LLM -> UI [label="8. Output", constraint=false, style=dashed, color="#FF9900"];',
-        '  DATA -> VS [style=dotted, label="Ingest"];',
-        '}'
-    ]
-    
-    return "\n".join(final_dot)
-
-# --- WORD DOCUMENT GENERATOR ---
-def create_docx_logic(text_content, branding_info, diagram_image=None):
     from docx import Document
     from docx.shared import Inches, Pt, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
 
     doc = Document()
     
-    # Cover Page
+    # --- PAGE 1: COVER PAGE ---
     if branding_info.get('aws_pn_logo_bytes'):
         p_top = doc.add_paragraph()
-        try: p_top.add_run().add_picture(io.BytesIO(branding_info['aws_pn_logo_bytes']), width=Inches(1.0))
-        except: p_top.add_run("aws partner network").bold = True
+        p_top.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        try:
+            run = p_top.add_run()
+            run.add_picture(io.BytesIO(branding_info['aws_pn_logo_bytes']), width=Inches(1.0))
+        except:
+            p_top.add_run("aws partner network").bold = True
 
-    doc.add_paragraph("\n" * 2)
+    doc.add_paragraph("\n" * 3)
+    
     title_p = doc.add_paragraph()
     title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = title_p.add_run(branding_info['solution_name'])
-    run.font.size, run.font.bold = Pt(28), True
+    run.font.size = Pt(26)
+    run.font.bold = True
     
-    subtitle = doc.add_paragraph()
-    subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run_s = subtitle.add_run("Scope of Work Document")
-    run_s.font.size, run_s.font.color.rgb = Pt(14), RGBColor(100, 116, 139)
+    subtitle_p = doc.add_paragraph()
+    subtitle_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = subtitle_p.add_run("Scope of Work Document")
+    run.font.size = Pt(14)
+    run.font.color.rgb = RGBColor(0x64, 0x74, 0x8B)
     
     doc.add_paragraph("\n" * 4)
+    
     logo_table = doc.add_table(rows=1, cols=3)
-    def insert_logo(cell, data, width, text):
-        cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-        if data:
-            try: cell.paragraphs[0].add_run().add_picture(io.BytesIO(data), width=Inches(width))
-            except: cell.paragraphs[0].add_run(text).bold = True
-        else: cell.paragraphs[0].add_run(text).bold = True
+    logo_table.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    def insert_logo_to_cell(cell, bytes_data, width_val, fallback_text):
+        cell.paragraphs[0].text = ""
+        p = cell.paragraphs[0]
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        if bytes_data:
+            try:
+                p.add_run().add_picture(io.BytesIO(bytes_data), width=Inches(width_val))
+            except:
+                p.add_run(fallback_text).bold = True
+        else:
+            p.add_run(fallback_text).bold = True
 
-    insert_logo(logo_table.rows[0].cells[0], branding_info.get('customer_logo_bytes'), 1.4, "[Customer]")
-    insert_logo(logo_table.rows[0].cells[1], branding_info.get('oneture_logo_bytes'), 2.2, "ONETURE")
-    insert_logo(logo_table.rows[0].cells[2], branding_info.get('aws_adv_logo_bytes'), 1.3, "AWS")
+    insert_logo_to_cell(logo_table.rows[0].cells[0], branding_info.get('customer_logo_bytes'), 1.4, "[Customer Logo]")
+    insert_logo_to_cell(logo_table.rows[0].cells[1], branding_info.get('oneture_logo_bytes'), 2.2, "ONETURE")
+    insert_logo_to_cell(logo_table.rows[0].cells[2], branding_info.get('aws_adv_logo_bytes'), 1.3, "AWS Advanced")
 
     doc.add_paragraph("\n" * 4)
+    
     date_p = doc.add_paragraph()
     date_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run_d = date_p.add_run(branding_info['doc_date_str'])
-    run_d.font.size, run_d.font.bold = Pt(12), True
-
+    run = date_p.add_run(branding_info['doc_date_str'])
+    run.font.size = Pt(12)
+    run.font.bold = True
+    
+    # End Page 1
     doc.add_page_break()
     
-    # Content
+    # --- CONTENT PROCESSING ---
     style = doc.styles['Normal']
-    style.font.name, style.font.size = 'Arial', Pt(10.5)
+    style.font.name = 'Arial'
+    style.font.size = Pt(11)
 
     lines = text_content.split('\n')
     i = 0
+    in_toc_section = False
+    toc_already_added = False
     overview_started = False
-    arch_section_injected = False
 
     while i < len(lines):
         line = lines[i].strip()
         if not line:
-            i += 1; continue
+            # Add small spacing to keep document flow
+            if i > 0 and lines[i-1].strip():
+                doc.add_paragraph("")
+            i += 1
+            continue
 
-        clean_text = re.sub(r'^#+\s*', '', re.sub(r'\*+', '', line)).strip()
+        # Prepare strings for structure detection - Use regex for cleaner stripping
+        # Remove markdown bolding and italics artifacts
+        line_clean = re.sub(r'\*+', '', line).strip()
+        # Extract title text without header markers
+        clean_text = re.sub(r'^#+\s*', '', line_clean).strip()
         upper_text = clean_text.upper()
 
-        # Skip AI Placeholders
-        if "[ARCHITECTURAL DIAGRAM" in upper_text or "DIAGRAM ILLUSTRATES THE PROPOSED" in upper_text:
-            i += 1; continue
+        # 1. Page Break Trigger: Section 2 MUST start on Page 3
+        # Detection matches any line starting with 2 and PROJECT OVERVIEW, or a header with it
+        if ("2 PROJECT OVERVIEW" in upper_text) and (line.startswith('#') or line.startswith('2')) and not overview_started:
+            doc.add_page_break()
+            in_toc_section = False
+            overview_started = True
+            doc.add_heading(clean_text, level=1)
+            i += 1
+            continue
 
-        # Table Parsing
+        # 2. Section 1 Trigger: TOC MUST stay on Page 2
+        if "1 TABLE OF CONTENTS" in upper_text:
+            if not toc_already_added:
+                in_toc_section = True
+                toc_already_added = True
+                doc.add_heading("1 TABLE OF CONTENTS", level=1)
+            i += 1
+            continue
+
+        # Markdown Table Detection
         if line.startswith('|') and i + 1 < len(lines) and lines[i+1].strip().startswith('|'):
             table_lines = []
             while i < len(lines) and lines[i].strip().startswith('|'):
@@ -294,43 +170,48 @@ def create_docx_logic(text_content, branding_info, diagram_image=None):
             if len(table_lines) >= 3:
                 data_lines = [l for l in table_lines if not set(l).issubset({'|', '-', ' ', ':'})]
                 if len(data_lines) >= 2:
-                    rows_data = [[c.strip() for c in r.split('|') if c.strip()] for r in data_lines]
-                    col_count = len(rows_data[0])
-                    table = doc.add_table(rows=len(rows_data), cols=col_count)
+                    headers = [c.strip() for c in data_lines[0].split('|') if c.strip()]
+                    table = doc.add_table(rows=1, cols=len(headers))
                     table.style = 'Table Grid'
-                    for r_idx, row_data in enumerate(rows_data):
-                        for c_idx, cell_text in enumerate(row_data):
-                            if c_idx < col_count:
-                                cell = table.rows[r_idx].cells[c_idx]
-                                cell.text = cell_text
-                                if r_idx == 0: cell.paragraphs[0].runs[0].bold = True
+                    hdr_cells = table.rows[0].cells
+                    for idx, h in enumerate(headers):
+                        hdr_cells[idx].text = h
+                    for row_str in data_lines[1:]:
+                        row_cells = table.add_row().cells
+                        r_data = [c.strip() for c in row_str.split('|') if c.strip()]
+                        for idx, c_text in enumerate(r_data):
+                            if idx < len(row_cells):
+                                row_cells[idx].text = c_text
                 doc.add_paragraph("")
             continue
 
-        if "2 PROJECT OVERVIEW" in upper_text and not overview_started:
-            doc.add_page_break()
-            overview_started = True
+        # Standard Elements Parsing
+        if line.startswith('# '):
             doc.add_heading(clean_text, level=1)
-        elif "4 SOLUTION ARCHITECTURE" in upper_text:
-            doc.add_heading(clean_text, level=1)
-            if diagram_image and not arch_section_injected:
-                doc.add_paragraph("The following diagram illustrates the proposed technical architecture for this solution on AWS, designed for scalability and secure GenAI orchestration.")
-                try:
-                    p_img = doc.add_paragraph(); p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    p_img.add_run().add_picture(io.BytesIO(diagram_image), width=Inches(6.0))
-                except: doc.add_paragraph("[Architectural Diagram Image]")
-                arch_section_injected = True
-        elif "1 TABLE OF CONTENTS" in upper_text:
-            doc.add_heading(clean_text, level=1)
-        elif line.startswith('# '): doc.add_heading(clean_text, level=1)
-        elif line.startswith('## '): doc.add_heading(clean_text, level=2)
-        elif line.startswith('### '): doc.add_heading(clean_text, level=3)
+        elif line.startswith('## '):
+            p = doc.add_heading(clean_text, level=2)
+            if in_toc_section:
+                p.paragraph_format.left_indent = Inches(0.4)
+        elif line.startswith('### '):
+            p = doc.add_heading(clean_text, level=3)
+            if in_toc_section:
+                p.paragraph_format.left_indent = Inches(0.8)
         elif line.startswith('- ') or line.startswith('* '):
-            p = doc.add_paragraph(re.sub(r'^[-*]\s*', '', clean_text), style='List Bullet')
+            # Strip the bullet marker for standard list rendering
+            bullet_text = re.sub(r'^[-*]\s*', '', clean_text)
+            p = doc.add_paragraph(bullet_text, style='List Bullet')
+            if in_toc_section:
+                p.paragraph_format.left_indent = Inches(0.4)
         else:
+            # Handle plain body text or TOC sub-items
             p = doc.add_paragraph(clean_text)
-            if any(k in upper_text for k in ["DEPENDENCIES:", "ASSUMPTIONS:", "SPONSOR:", "CONTACTS:"]):
-                if p.runs: p.runs[0].bold = True
+            if in_toc_section and len(clean_text) > 3 and clean_text[0].isdigit():
+                 p.paragraph_format.left_indent = Inches(0.4)
+            
+            # Segregation bolding logic for key category labels in Project Overview
+            if any(key in upper_text for key in ["DEPENDENCIES:", "ASSUMPTIONS:", "SPONSOR:", "CONTACTS:"]):
+                if p.runs:
+                    p.runs[0].bold = True
         i += 1
             
     bio = io.BytesIO()
@@ -338,140 +219,216 @@ def create_docx_logic(text_content, branding_info, diagram_image=None):
     return bio.getvalue()
 
 # --- INITIALIZATION ---
-if 'generated_sow' not in st.session_state: st.session_state.generated_sow = ""
-if 'arch_dot_string' not in st.session_state: st.session_state.arch_dot_string = ""
-if 'arch_diagram_bytes' not in st.session_state: st.session_state.arch_diagram_bytes = None
+if 'generated_sow' not in st.session_state:
+    st.session_state.generated_sow = ""
 
 if 'stakeholders' not in st.session_state:
     import pandas as pd
     st.session_state.stakeholders = {
         "Partner": pd.DataFrame([{"Name": "Gaurav Kankaria", "Title": "Head of Analytics & ML", "Email": "gaurav.kankaria@oneture.com"}]),
-        "Customer": pd.DataFrame([{"Name": "Cheten Dev", "Title": "Head of Product Design", "Email": "cheten.dev@oneture.com"}]),
-        "AWS": pd.DataFrame([{"Name": "Anubhav Sood", "Title": "AE", "Email": "anbhsood@amazon.com"}]),
-        "Escalation": pd.DataFrame([{"Name": "Omkar Dhavalikar", "Title": "AI Lead", "Email": "omkar.dhavalikar@oneture.com"}])
+        "Customer": pd.DataFrame([{"Name": "Cheten Dev", "Title": "Head of Product Design", "Email": "cheten.dev@nykaa.com"}]),
+        "AWS": pd.DataFrame([{"Name": "Anubhav Sood", "Title": "AWS Account Executive", "Email": "anbhsood@amazon.com"}]),
+        "Escalation": pd.DataFrame([
+            {"Name": "Omkar Dhavalikar", "Title": "AI/ML Lead", "Email": "omkar.dhavalikar@oneture.com"},
+            {"Name": "Gaurav Kankaria", "Title": "Head of Analytics and AIML", "Email": "gaurav.kankaria@oneture.com"}
+        ])
     }
 
 def clear_sow():
     st.session_state.generated_sow = ""
-    st.session_state.arch_dot_string = ""
-    st.session_state.arch_diagram_bytes = None
 
-# --- SIDEBAR & UI ---
+# --- SIDEBAR: PROJECT INTAKE ---
 with st.sidebar:
     st.image("https://img.icons8.com/fluency/96/artificial-intelligence.png", width=60)
     st.title("SOW Architect")
-    api_key = st.text_input("Gemini API Key", type="password")
+    st.caption("Enterprise POC/MVP Engine")
+    
+    with st.expander("🔑 API Key", expanded=False):
+        api_key = st.text_input("Gemini API Key", type="password")
+    
     st.divider()
-    solution_options = list(PATTERN_MAPPING.keys()) + ["Other (Please specify)"]
+    st.header("📋 1. Project Intake")
+
+    solution_options = [
+        "Multi Agent Store Advisor", "Intelligent Search", "Recommendation", 
+        "AI Agents Demand Forecasting", "Banner Audit using LLM", "Image Enhancement", 
+        "Virtual Try-On", "Agentic AI L1 Support", "Product Listing Standardization", 
+        "AI Agents Based Pricing Module", "Cost, Margin Visibility & Insights using LLM", 
+        "AI Trend Simulator", "Virtual Data Analyst (Text to SQL)", "Multilingual Call Analysis", 
+        "Customer Review Analysis", "Sales Co-Pilot", "Research Co-Pilot", 
+        "Product Copy Generator", "Multi-agent e-KYC & Onboarding", "Document / Report Audit", 
+        "RBI Circular Scraping & Insights Bot", "Visual Inspection", 
+        "AIoT based CCTV Surveillance", "Multilingual Voice Bot", "SOP Creation", "Other (Please specify)"
+    ]
     solution_type = st.selectbox("1.1 Solution Type", solution_options)
     final_solution = st.text_input("Specify Solution Name", placeholder="Enter solution...") if solution_type == "Other (Please specify)" else solution_type
-    engagement_type = st.selectbox("1.2 Engagement Type", ["Proof of Concept (PoC)", "Pilot", "MVP", "Production Rollout", "Assessment / Discovery", "Support"])
-    industry_type = st.selectbox("1.3 Industry / Domain", ["Retail / E-commerce", "BFSI", "Manufacturing", "Telecom", "Healthcare", "Logistics", "Media", "Government"])
-    duration = st.text_input("Timeline / Duration", "4 Weeks")
-    if st.button("🗑️ Reset All Fields", on_click=clear_sow, use_container_width=True): st.rerun()
 
+    engagement_options = ["Proof of Concept (PoC)", "Pilot", "MVP", "Production Rollout", "Assessment / Discovery", "Support"]
+    engagement_type = st.selectbox("1.2 Engagement Type", engagement_options)
+
+    industry_options = ["Retail / E-commerce", "BFSI", "Manufacturing", "Telecom", "Healthcare", "Energy / Utilities", "Logistics", "Media", "Government", "Other (specify)"]
+    industry_type = st.selectbox("1.3 Industry / Domain", industry_options)
+    final_industry = st.text_input("Specify Industry", placeholder="Enter industry...") if industry_type == "Other (specify)" else industry_type
+
+    duration = st.text_input("Timeline / Duration", "4 Weeks")
+    
+    if st.button("🗑️ Reset All Fields", on_click=clear_sow, use_container_width=True):
+        st.rerun()
+
+# --- MAIN UI ---
 st.title("🚀 GenAI Scope of Work Architect")
 
+# --- STEP 0: COVER PAGE BRANDING ---
 st.header("📸 Cover Page Branding")
 brand_col1, brand_col2 = st.columns(2)
 with brand_col1:
-    aws_pn_logo = st.file_uploader("AWS Partner Network Logo", type=['png', 'jpg', 'jpeg'], key="aws_pn")
-    customer_logo = st.file_uploader("Customer Logo", type=['png', 'jpg', 'jpeg'], key="cust_logo")
+    aws_pn_logo = st.file_uploader("Top Left: AWS Partner Network Logo", type=['png', 'jpg', 'jpeg'], key="aws_pn")
+    customer_logo = st.file_uploader("Slot 1: Customer Logo", type=['png', 'jpg', 'jpeg'], key="cust_logo")
+
 with brand_col2:
-    oneture_logo = st.file_uploader("Oneture Logo", type=['png', 'jpg', 'jpeg'], key="one_logo")
-    aws_adv_logo = st.file_uploader("AWS Advanced Logo", type=['png', 'jpg', 'jpeg'], key="aws_adv")
+    oneture_logo = st.file_uploader("Slot 2: Oneture Logo", type=['png', 'jpg', 'jpeg'], key="one_logo")
+    aws_adv_logo = st.file_uploader("Slot 3: AWS Advanced Logo", type=['png', 'jpg', 'jpeg'], key="aws_adv")
     doc_date = st.date_input("Document Date", date.today())
 
 st.divider()
 
 # --- STEP 2: OBJECTIVES & STAKEHOLDERS ---
 st.header("2. Objectives & Stakeholders")
-objective = st.text_area("2.1 Objective", placeholder="e.g., Development of a Gen AI based WIMO Bot...", height=100)
-outcomes = st.multiselect("Select success metrics:", ["Reduced Response Time", "Automated SOP Mapping", "Cost Savings", "Higher Accuracy", "Metadata Richness", "Revenue Growth", "Security Compliance", "Scalability", "Integration Feasibility"], default=["Higher Accuracy", "Cost Savings"])
 
-st.subheader("👥 2.2 Stakeholders")
+st.subheader("🎯 2.1 Objective")
+objective = st.text_area(
+    "Define the core business objective:", 
+    placeholder="e.g., Development of a Gen AI based WIMO Bot to demonstrate feasibility...",
+    height=120
+)
+outcomes = st.multiselect(
+    "Select success metrics:", 
+    ["Reduced Response Time", "Automated SOP Mapping", "Cost Savings", "Higher Accuracy", "Metadata Richness", "Revenue Growth", "Security Compliance", "Scalability", "Integration Feasibility"],
+    default=["Higher Accuracy", "Cost Savings"]
+)
+
+st.divider()
+
+st.subheader("👥 2.2 Project Sponsor(s) / Stakeholder(s) / Project Team")
 col_team1, col_team2 = st.columns(2)
+
 with col_team1:
     st.markdown('<div class="stakeholder-header">Partner Executive Sponsor</div>', unsafe_allow_html=True)
     st.session_state.stakeholders["Partner"] = st.data_editor(st.session_state.stakeholders["Partner"], num_rows="dynamic", use_container_width=True, key="ed_partner")
+
     st.markdown('<div class="stakeholder-header">AWS Executive Sponsor</div>', unsafe_allow_html=True)
     st.session_state.stakeholders["AWS"] = st.data_editor(st.session_state.stakeholders["AWS"], num_rows="dynamic", use_container_width=True, key="ed_aws")
+
 with col_team2:
     st.markdown('<div class="stakeholder-header">Customer Executive Sponsor</div>', unsafe_allow_html=True)
     st.session_state.stakeholders["Customer"] = st.data_editor(st.session_state.stakeholders["Customer"], num_rows="dynamic", use_container_width=True, key="ed_customer")
+
     st.markdown('<div class="stakeholder-header">Project Escalation Contacts</div>', unsafe_allow_html=True)
     st.session_state.stakeholders["Escalation"] = st.data_editor(st.session_state.stakeholders["Escalation"], num_rows="dynamic", use_container_width=True, key="ed_escalation")
 
+# --- GENERATION ---
 if st.button("✨ Generate SOW Document", type="primary", use_container_width=True):
-    if not api_key: st.error("Please enter Gemini API Key")
-    elif not objective: st.error("Please define project objective")
+    if not api_key:
+        st.warning("⚠️ Enter a Gemini API Key in the sidebar.")
+    elif not objective:
+        st.error("⚠️ Business Objective is required.")
     else:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={api_key}"
-        pattern = PATTERN_MAPPING.get(solution_type, "AGENTIC_RAG")
-        
-        with st.spinner("Generating Professional SOW & AWS Architecture..."):
-            get_md = lambda df: df.to_markdown(index=False)
-            prompt_sow = f"""
-            Generate a COMPLETE formal enterprise Scope of Work (SOW) for {final_solution} in {industry_type}.
+        import requests
+        with st.spinner(f"Architecting SOW for {final_solution}..."):
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={api_key}"
+            
+            def get_md(df):
+                return df.to_markdown(index=False)
+
+            prompt_text = f"""
+            Generate a COMPLETE formal enterprise Scope of Work (SOW) for {final_solution} in {final_industry}.
             
             MANDATORY STRUCTURE:
-            1 TABLE OF CONTENTS
-            2 PROJECT OVERVIEW (2.1 Objective, 2.2 Stakeholders, 2.3 Assumptions & Dependencies, 2.4 Success Criteria)
+            1 TABLE OF CONTENTS (Indented sub-items)
+            2 PROJECT OVERVIEW
+              2.1 OBJECTIVE
+              2.2 PROJECT SPONSOR(S) / STAKEHOLDER(S) / PROJECT TEAM
+              2.3 ASSUMPTIONS & DEPENDENCIES
+              2.4 PROJECT SUCCESS CRITERIA
             3 SCOPE OF WORK – TECHNICAL PROJECT PLAN
-            4 SOLUTION ARCHITECTURE (Keep brief text, diagram will be injected)
-            5 RESOURCES & COST ESTIMATES (Include a 3-column Commercials table and a 2-column Bedrock Pricing table)
+            4 SOLUTION ARCHITECTURE / ARCHITECTURAL DIAGRAM
+            5 RESOURCES & COST ESTIMATES
 
-            Stakeholder Tables:
+            CONTENT RULES:
+            - NO filler text or introductory sentences between headers 2, 2.1, 2.2, and 2.3.
+            - Section 2 must start fresh and immediately with 2.1 Objective.
+            - Section 2.2 must keep all stakeholder sections distinct with provided tables.
+            - Section 2.3 must clearly segregate into "Dependencies:" and "Assumptions:" labels with bulleted lists.
+            - Remove ALL unnecessary asterisks (*) or markdown bolding marks (**) inside text or headings. 
+            - Use plain text output only for document content. No markdown symbols like bolding or italics in the body.
+
+            INPUT DETAILS:
+            - Engagement Type: {engagement_type}
+            - Primary Objective: {objective}
+            - Success Metrics: {', '.join(outcomes)}
+            - Timeline: {duration}
+            
+            STAKEHOLDER TABLES:
             {get_md(st.session_state.stakeholders["Partner"])}
             {get_md(st.session_state.stakeholders["Customer"])}
+            {get_md(st.session_state.stakeholders["AWS"])}
+            {get_md(st.session_state.stakeholders["Escalation"])}
 
-            Tone: Professional Consulting. Rules: Use tables for all pricing and resource data. Plain text only. No markdown bolding (**).
+            Tone: Professional consulting. Output: Markdown only.
             """
             
-            res_sow = make_api_call(url, {"contents": [{"parts": [{"text": prompt_sow}]}]})
-            if res_sow and res_sow.status_code == 200:
-                st.session_state.generated_sow = res_sow.json()['candidates'][0]['content']['parts'][0]['text']
+            payload = {
+                "contents": [{"parts": [{"text": prompt_text}]}],
+                "systemInstruction": {"parts": [{"text": "You are a senior Solutions Architect. You generate detailed SOW documents. Strictly follow numbering. NO filler text. NO markdown bolding marks or asterisks in the output text. Plain text output only."}]}
+            }
             
-            prompt_arch = f"Generate JSON for AWS Architecture: {final_solution}, Pattern: {pattern}. Include: ui, orchestration, llm (provider, model_family), agent_framework, vector_store, data_sources."
-            res_arch = make_api_call(url, {"contents": [{"parts": [{"text": prompt_arch}]}], "generationConfig": {"responseMimeType": "application/json"}})
-            if res_arch and res_arch.status_code == 200:
-                try:
-                    arch_json = json.loads(res_arch.json()['candidates'][0]['content']['parts'][0]['text'])
-                    dot_str = generate_architecture_dot(arch_json)
-                    st.session_state.arch_dot_string = dot_str
-                    q_url = f"https://quickchart.io/graphviz?graph={quote(dot_str)}"
-                    img_res = requests.get(q_url, timeout=10)
-                    if img_res.status_code == 200: st.session_state.arch_diagram_bytes = img_res.content
-                except: pass
-            st.balloons()
+            try:
+                res = requests.post(url, json=payload)
+                if res.status_code == 200:
+                    st.session_state.generated_sow = res.json()['candidates'][0]['content']['parts'][0]['text']
+                    st.balloons()
+                else:
+                    st.error(f"API Error: {res.text}")
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
 
+# --- STEP 3: REVIEW & EXPORT ---
 if st.session_state.generated_sow:
-    st.divider(); st.header("3. Review & Export")
-    tab_edit, tab_preview = st.tabs(["✍️ Editor", "📄 Preview"])
+    st.divider()
+    st.header("3. Review & Export")
+    tab_edit, tab_preview = st.tabs(["✍️ Document Editor", "📄 Visual Preview"])
+    
     with tab_edit:
-        st.session_state.generated_sow = st.text_area("SOW Content", value=st.session_state.generated_sow, height=500)
+        st.session_state.generated_sow = st.text_area(
+            label="Modify generated content:", 
+            value=st.session_state.generated_sow, 
+            height=700, 
+            key="sow_editor"
+        )
+    
     with tab_preview:
-        st.markdown('<div class="sow-preview">', unsafe_allow_html=True)
-        preview_text = st.session_state.generated_sow
-        arch_match = re.search(r'(#*\s*4\s+SOLUTION ARCHITECTURE)', preview_text, re.IGNORECASE)
-        if arch_match and st.session_state.arch_dot_string:
-            pos = arch_match.end()
-            before, after = preview_text[:pos], re.sub(r'\[ARCHITECTURAL DIAGRAM.*?\]', '', preview_text[pos:], flags=re.IGNORECASE)
-            st.markdown(before)
-            st.graphviz_chart(st.session_state.arch_dot_string)
-            st.markdown(after)
-        else:
-            st.markdown(preview_text)
+        st.markdown(f'<div class="sow-preview">', unsafe_allow_html=True)
+        st.markdown(st.session_state.generated_sow)
         st.markdown('</div>', unsafe_allow_html=True)
-
-    if st.button("💾 Download .docx", use_container_width=True):
-        branding = {
-            'solution_name': final_solution, 'aws_pn_logo_bytes': aws_pn_logo.getvalue() if aws_pn_logo else None,
+    
+    st.write("")
+    
+    if st.button("💾 Prepare Microsoft Word Document"):
+        branding_info = {
+            'solution_name': final_solution,
+            'aws_pn_logo_bytes': aws_pn_logo.getvalue() if aws_pn_logo else None,
             'customer_logo_bytes': customer_logo.getvalue() if customer_logo else None,
             'oneture_logo_bytes': oneture_logo.getvalue() if oneture_logo else None,
             'aws_adv_logo_bytes': aws_adv_logo.getvalue() if aws_adv_logo else None,
             'doc_date_str': doc_date.strftime("%d %B %Y")
         }
-        docx_data = create_docx_logic(st.session_state.generated_sow, branding, st.session_state.arch_diagram_bytes)
-        st.download_button("📥 Save Now", docx_data, file_name=f"SOW_{final_solution.replace(' ', '_')}.docx")
-
+        
+        docx_data = create_docx_logic(st.session_state.generated_sow, branding_info)
+        
+        st.download_button(
+            label="📥 Download Now (.docx)", 
+            data=docx_data, 
+            file_name=f"SOW_{final_solution.replace(' ', '_')}.docx", 
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
+            use_container_width=True
+        )
