@@ -8,6 +8,19 @@ import time
 import random
 from urllib.parse import quote
 
+# Check for specialized AWS diagramming library
+AWS_DIAGRAMS_AVAILABLE = True
+try:
+    from diagrams import Diagram, Cluster
+    from diagrams.aws.general import User
+    from diagrams.aws.compute import Lambda, EC2
+    from diagrams.aws.ml import Bedrock, Textract, Rekognition
+    from diagrams.aws.storage import S3
+    from diagrams.aws.analytics import OpenSearchService
+    from diagrams.aws.database import RDS
+except Exception:
+    AWS_DIAGRAMS_AVAILABLE = False
+
 # --- CONFIGURATION ---
 st.set_page_config(
     page_title="GenAI SOW Architect", 
