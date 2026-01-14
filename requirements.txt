@@ -4,3 +4,7 @@ pandas
 requests
 diagrams
 graphviz
+datetime 
+io
+re
+json
