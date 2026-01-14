@@ -2,6 +2,39 @@ import streamlit as st
 from datetime import date
 import io
 import re
+import os
+
+# --- FILE PATHING & DIAGRAM MAPPING ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+SOW_DIAGRAM_MAP = {
+    "L1 Support Bot POC SOW":
+        os.path.join(BASE_DIR, "diagrams", "L1 Support Bot POC SOW.png"),
+
+    "Ready Search POC Scope of Work Document":
+        os.path.join(BASE_DIR, "diagrams", "Ready Search POC Scope of Work Document.png"),
+
+    "AI based Image Enhancement POC SOW":
+        os.path.join(BASE_DIR, "diagrams", "AI based Image Enhancement POC SOW.png"),
+
+    "Beauty Advisor POC SOW":
+        os.path.join(BASE_DIR, "diagrams", "Beauty Advisor POC SOW.png"),
+
+    "AI based Image Inspection POC SOW":
+        os.path.join(BASE_DIR, "diagrams", "AI based Image Inspection POC SOW.png"),
+
+    "Gen AI for SOP POC SOW":
+        os.path.join(BASE_DIR, "diagrams", "Gen AI for SOP POC SOW.png"),
+
+    "Project Scope Document":
+        os.path.join(BASE_DIR, "diagrams", "Project Scope Document.png"),
+
+    "Gen AI Speech To Speech":
+        os.path.join(BASE_DIR, "diagrams", "Gen AI Speech To Speech.png"),
+
+    "PoC Scope Document":
+        os.path.join(BASE_DIR, "diagrams", "PoC Scope Document.png")
+}
 
 # --- CONFIGURATION ---
 st.set_page_config(
@@ -251,6 +284,21 @@ with st.sidebar:
     ]
     selected_sow_name = st.selectbox("1.1 Scope of Work Type", sow_type_options)
 
+    # Solution Architecture Diagram Display
+    st.divider()
+    st.header("🧩 Solution Architecture Diagram")
+
+    diagram_path = SOW_DIAGRAM_MAP.get(selected_sow_name)
+    if diagram_path and os.path.exists(diagram_path):
+        st.image(
+            diagram_path,
+            caption=f"{selected_sow_name} – Architecture Diagram",
+            use_container_width=True
+        )
+    else:
+        st.warning("No architecture diagram available for this SOW type.")
+
+    st.divider()
     industry_options = ["Retail / E-commerce", "BFSI", "Manufacturing", "Telecom", "Healthcare", "Energy / Utilities", "Logistics", "Media", "Government", "Other (specify)"]
     industry_type = st.selectbox("1.2 Industry / Domain", industry_options)
     final_industry = st.text_input("Specify Industry", placeholder="Enter industry...") if industry_type == "Other (specify)" else industry_type
