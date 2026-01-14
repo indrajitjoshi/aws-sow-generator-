@@ -391,13 +391,20 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             STRICT PAGE & SECTION FLOW:
             1 TABLE OF CONTENTS (Indented sub-items)
             2 PROJECT OVERVIEW
-              2.1 OBJECTIVE (Strictly 2-3 lines based on user input)
+              2.1 OBJECTIVE (Strictly 2-3 lines based on user input: {objective})
               2.2 PROJECT SPONSOR(S) / STAKEHOLDER(S) / PROJECT TEAM
-                  Strictly format this section with these four labels, each followed immediately by its table:
-                  - Partner Executive Sponsor
-                  - Customer Executive Sponsor
-                  - AWS Executive Sponsor
-                  - Project Escalation Contacts
+                  You MUST display the following FOUR sections clearly and distinctly, each with its own heading followed by the corresponding table:
+                  ### Partner Executive Sponsor
+                  {get_md(st.session_state.stakeholders["Partner"])}
+                  
+                  ### Customer Executive Sponsor
+                  {get_md(st.session_state.stakeholders["Customer"])}
+                  
+                  ### AWS Executive Sponsor
+                  {get_md(st.session_state.stakeholders["AWS"])}
+                  
+                  ### Project Escalation Contacts
+                  {get_md(st.session_state.stakeholders["Escalation"])}
               2.3 ASSUMPTIONS & DEPENDENCIES
               2.4 PoC Success Criteria
             3 SCOPE OF WORK – TECHNICAL PROJECT PLAN
@@ -405,51 +412,36 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             6 RESOURCES & COST ESTIMATES
 
             CONTENT REQUIREMENTS FOR 2.4 (PoC Success Criteria):
-            Include these 5 points:
-            1. Accurate Compliance Validation (detecting compliance/non-compliance against design guidelines; identifying errors/blocking issues vs warnings/quality).
-            2. Structured Metadata (Tags) Extraction (Auto generation of tags: compliance status, CTA type, Offer type, Products, Brands, Brand ambassador).
-            3. Ad Score Generation (Working scoring framework 0-100 reflecting quality).
-            4. Recommendations & Feedback (Clear actionable feedback like 'increase resolution' aligned with guidelines).
-            5. Usability & Workflow Demonstration (Seamless flow: Upload -> Compliance -> Summary -> Recommendations).
+            Strictly include these 5 outcomes:
+            1. Accurate Compliance Validation: Accurate detection of compliance/non-compliance against design guidelines; identification of errors (blocking) vs warnings (quality).
+            2. Structured Metadata (Tags) Extraction: Auto-generation of tags including compliance status, CTA type, Offer type, Products shown, Brands shown, and Brand ambassador presence.
+            3. Ad Score Generation: Working framework (0-100) reflecting quality and compliance.
+            4. Recommendations & Feedback: Clear actionable recommendations (e.g. "increase resolution") aligned with guidelines.
+            5. Usability & Workflow Demonstration: Seamless end-to-end flow: Upload -> Compliance -> Summary -> Score -> Recommendations.
 
             CONTENT REQUIREMENTS FOR 3 (SCOPE OF WORK - TECHNICAL PROJECT PLAN):
-            Include these 4 phases:
-            1. Infrastructure Setup (AWS Services like Bedrock, S3, Lambda; gathering samples/guidelines).
-            2. Create Core Workflows (Banner Upload/Validation, Compliance/Tagging Flow, Issue Detection/Recommendation Flow, Ad Scoring Flow).
-            3. Backend Components (Compliance Engine, Tagging Module, S3 storage).
-            4. Testing and Feedback (Demonstration UI, validate against manual reviewer results, stakeholder feedback).
+            Strictly include these 4 phases:
+            1. Infrastructure Setup: Setup AWS services (Bedrock, S3, Lambda, etc.) and gather samples/guidelines.
+            2. Create Core Workflows: Banner Upload & Validation, Compliance & Tagging Flow, Issue Detection & Recommendation Flow, Ad Scoring Flow.
+            3. Backend Components: Implement Compliance Engine, build Tagging Module, and store in Amazon S3.
+            4. Testing and Feedback: Create PoC UI, validate accuracy against manual reviewer results, and gather stakeholder feedback.
 
             CONTENT RULES:
             - Section 4 must include the text: "Specifics to be discussed basis POC".
             - NO filler text or introductory sentences between headers.
-            - Remove ALL markdown bolding marks (**) inside text or headings. 
-            - Use plain text output only for document content.
+            - Remove ALL markdown bolding marks (**) inside headings or body text.
+            - Use plain text output only.
 
             INPUT DETAILS:
             - SOW Document Type: {selected_sow_name}
-            - Primary Objective: {objective}
-            - Success Metrics: {', '.join(outcomes)}
             - Timeline: {duration}
             
-            STAKEHOLDER TABLES:
-            PARTNER EXECUTIVE SPONSOR:
-            {get_md(st.session_state.stakeholders["Partner"])}
-
-            CUSTOMER EXECUTIVE SPONSOR:
-            {get_md(st.session_state.stakeholders["Customer"])}
-
-            AWS EXECUTIVE SPONSOR:
-            {get_md(st.session_state.stakeholders["AWS"])}
-
-            PROJECT ESCALATION CONTACTS:
-            {get_md(st.session_state.stakeholders["Escalation"])}
-
             Tone: Professional consulting. Output: Markdown only.
             """
             
             payload = {
                 "contents": [{"parts": [{"text": prompt_text}]}],
-                "systemInstruction": {"parts": [{"text": "You are a senior Solutions Architect. You generate detailed SOW documents. Strictly follow numbering and the specified flow. Ensure section 2.4 and 3 are detailed as requested. Ensure stakeholder labels in 2.2 are clear and distinct. Plain text output only."}]}
+                "systemInstruction": {"parts": [{"text": "You are a senior Solutions Architect. You generate detailed SOW documents. Strictly follow numbering and flow. Ensure stakeholder sections in 2.2 are distinct with their own sub-headers and tables. Sections 2.4 and 3 must be comprehensive as described. No markdown bolding."}]}
             }
             
             try:
@@ -478,7 +470,6 @@ if st.session_state.generated_sow:
     
     with tab_preview:
         st.markdown(f'<div class="sow-preview">', unsafe_allow_html=True)
-        # Regex search for Section 4 header to inject diagram in visual preview
         header_pattern = r'(?i)(^#*\s*4\s+SOLUTION ARCHITECTURE.*)'
         match = re.search(header_pattern, st.session_state.generated_sow, re.MULTILINE)
         
@@ -514,4 +505,3 @@ if st.session_state.generated_sow:
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
             use_container_width=True
         )
-
