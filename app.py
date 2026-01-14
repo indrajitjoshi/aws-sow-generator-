@@ -242,7 +242,13 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
             if in_toc_section and len(clean_text) > 3 and clean_text[0].isdigit():
                  p.paragraph_format.left_indent = Inches(0.4)
             
-            if any(key in upper_text for key in ["DEPENDENCIES:", "ASSUMPTIONS:", "SPONSOR:", "CONTACTS:"]):
+            # Segregation bolding logic for all key sections and stakeholder sub-headers
+            segregation_keywords = [
+                "PARTNER EXECUTIVE SPONSOR", "CUSTOMER EXECUTIVE SPONSOR", 
+                "AWS EXECUTIVE SPONSOR", "PROJECT ESCALATION CONTACTS",
+                "DEPENDENCIES:", "ASSUMPTIONS:", "SPONSOR:", "CONTACTS:"
+            ]
+            if any(key in upper_text for key in segregation_keywords):
                 if p.runs:
                     p.runs[0].bold = True
         i += 1
@@ -386,7 +392,12 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             1 TABLE OF CONTENTS (Indented sub-items)
             2 PROJECT OVERVIEW
               2.1 OBJECTIVE (Strictly 2-3 lines based on user input)
-              2.2 PROJECT SPONSOR(S) / STAKEHOLDER(S) / PROJECT TEAM (Include the provided tables for Partner, Customer, AWS, and Escalation)
+              2.2 PROJECT SPONSOR(S) / STAKEHOLDER(S) / PROJECT TEAM
+                  Strictly format this section with these four labels, each followed immediately by its table:
+                  - Partner Executive Sponsor
+                  - Customer Executive Sponsor
+                  - AWS Executive Sponsor
+                  - Project Escalation Contacts
               2.3 ASSUMPTIONS & DEPENDENCIES
               2.4 PoC Success Criteria
             3 SCOPE OF WORK – TECHNICAL PROJECT PLAN
@@ -421,9 +432,16 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             - Timeline: {duration}
             
             STAKEHOLDER TABLES:
+            PARTNER EXECUTIVE SPONSOR:
             {get_md(st.session_state.stakeholders["Partner"])}
+
+            CUSTOMER EXECUTIVE SPONSOR:
             {get_md(st.session_state.stakeholders["Customer"])}
+
+            AWS EXECUTIVE SPONSOR:
             {get_md(st.session_state.stakeholders["AWS"])}
+
+            PROJECT ESCALATION CONTACTS:
             {get_md(st.session_state.stakeholders["Escalation"])}
 
             Tone: Professional consulting. Output: Markdown only.
@@ -431,7 +449,7 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             
             payload = {
                 "contents": [{"parts": [{"text": prompt_text}]}],
-                "systemInstruction": {"parts": [{"text": "You are a senior Solutions Architect. You generate detailed SOW documents. Strictly follow numbering and the specified flow. Ensure section 2.4 and 3 are detailed as requested. Plain text output only."}]}
+                "systemInstruction": {"parts": [{"text": "You are a senior Solutions Architect. You generate detailed SOW documents. Strictly follow numbering and the specified flow. Ensure section 2.4 and 3 are detailed as requested. Ensure stakeholder labels in 2.2 are clear and distinct. Plain text output only."}]}
             }
             
             try:
@@ -496,3 +514,4 @@ if st.session_state.generated_sow:
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
             use_container_width=True
         )
+
