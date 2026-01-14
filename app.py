@@ -5,6 +5,7 @@ import re
 import json
 import requests
 import time
+import random
 from urllib.parse import quote
 
 # --- CONFIGURATION ---
@@ -78,13 +79,15 @@ PATTERN_MAPPING = {
     "SOP Creation": "AGENTIC_RAG"
 }
 
-# --- API HELPER WITH EXPONENTIAL BACKOFF ---
+# --- API HELPER WITH EXPONENTIAL BACKOFF AND JITTER ---
 def make_api_call(url, payload):
     """
-    Handles API calls with exponential backoff to manage 429 Rate Limit errors.
-    Retries up to 5 times with delays of 1s, 2s, 4s, 8s, 16s.
+    Handles API calls with exponential backoff and randomized jitter 
+    to manage 429 Rate Limit (Quota) errors effectively.
     """
     retries = 5
+    base_delay = 2  # Starting with a slightly longer base delay
+    
     for i in range(retries):
         try:
             response = requests.post(url, json=payload)
@@ -92,16 +95,19 @@ def make_api_call(url, payload):
                 return response
             elif response.status_code == 429:
                 if i < retries - 1:
-                    time.sleep(2**i)
+                    # Exponential backoff: 2, 4, 8, 16, 32...
+                    # Plus Jitter: adds 0-1000ms to prevent collisions
+                    delay = (base_delay ** (i + 1)) + random.uniform(0, 1)
+                    time.sleep(delay)
                     continue
                 else:
-                    st.error("API Error: Quota exceeded. Please wait a moment and try again.")
+                    st.error("API Quota Exceeded: The free tier limit has been reached. Please wait 60 seconds or use a billing-enabled API key.")
                     return response
             else:
                 return response
         except Exception as e:
             if i < retries - 1:
-                time.sleep(2**i)
+                time.sleep(base_delay ** i)
                 continue
             else:
                 raise e
