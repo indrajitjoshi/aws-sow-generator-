@@ -411,11 +411,11 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             prompt_text = f"""
             Generate a COMPLETE formal enterprise SOW for {selected_sow_name} in {final_industry}.
             
-            STRICT PAGE & SECTION FLOW:
+            STRICT PAGE & SECTION FLOW (RETAIN THIS EXACT ORDER FOR ALL CASES):
             1 TABLE OF CONTENTS
             2 PROJECT OVERVIEW
               2.1 OBJECTIVE: {objective}
-              2.2 PROJECT SPONSOR(S) / STAKEHOLDER(S) / PROJECT TEAM
+              2.2 PROJECT TEAM:
                   You MUST display these four sub-headings clearly:
                   Partner Executive Sponsor
                   {get_md(st.session_state.stakeholders["Partner"])}
@@ -426,7 +426,7 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
                   Project Escalation Contacts
                   {get_md(st.session_state.stakeholders["Escalation"])}
               2.3 ASSUMPTIONS & DEPENDENCIES
-                  Provide separate sections for "Assumptions" and "Dependencies", each with 2-5 distinct bullet points.
+                  - Include separate bullet points for "Assumptions" (2-5 points) and "Dependencies" (2-5 points).
               2.4 Project Success Criteria
             3 SCOPE OF WORK - TECHNICAL PROJECT PLAN
             4 SOLUTION ARCHITECTURE / ARCHITECTURAL DIAGRAM
@@ -435,12 +435,12 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
 
             RULES:
             - Section 4 must include: "Specifics to be discussed basis POC".
-            - Section 5 must include: "Placeholder for Cost Table".
+            - Section 5 must include exactly: "Placeholder for Cost Table".
             - NO markdown bolding marks (**). Output: Markdown only.
             """
             payload = {
                 "contents": [{"parts": [{"text": prompt_text}]}],
-                "systemInstruction": {"parts": [{"text": "You are a senior Solutions Architect. Strictly follow numbering and flow. No markdown bolding."}]}
+                "systemInstruction": {"parts": [{"text": "You are a senior Solutions Architect. Strictly follow numbering and flow. No markdown bolding. Ensure Section 5 'COST ESTIMATION TABLE' is present in every output regardless of the project type."}]}
             }
             try:
                 res = requests.post(url, json=payload)
@@ -459,18 +459,26 @@ if st.session_state.generated_sow:
         st.session_state.generated_sow = st.text_area(label="Modify content:", value=st.session_state.generated_sow, height=700, key="sow_editor")
     with tab_preview:
         st.markdown(f'<div class="sow-preview">', unsafe_allow_html=True)
+        
+        # Prepare content for visual preview (handling links and diagram)
+        calc_url_p = CALCULATOR_LINKS.get(selected_sow_name, "https://calculator.aws")
+        if selected_sow_name == "Beauty Advisor POC SOW" and "Production Development" in st.session_state.generated_sow:
+            calc_url_p = CALCULATOR_LINKS["Beauty Advisor Production"]
+            
+        preview_content = st.session_state.generated_sow.replace("Estimate", f'<a href="{calc_url_p}" target="_blank" style="color:#3b82f6; text-decoration: underline;">Estimate</a>')
+
         # Visual diagram logic
         header_pattern = r'(?i)(^#*\s*4\s+SOLUTION ARCHITECTURE.*)'
-        match = re.search(header_pattern, st.session_state.generated_sow, re.MULTILINE)
+        match = re.search(header_pattern, preview_content, re.MULTILINE)
         if match:
             start, end = match.span()
-            st.markdown(st.session_state.generated_sow[:end])
+            st.markdown(preview_content[:end], unsafe_allow_html=True)
             diagram_path_out = SOW_DIAGRAM_MAP.get(selected_sow_name)
             if diagram_path_out and os.path.exists(diagram_path_out):
                 st.image(diagram_path_out, caption=f"{selected_sow_name} Architecture", use_container_width=True)
-            st.markdown(st.session_state.generated_sow[end:])
+            st.markdown(preview_content[end:], unsafe_allow_html=True)
         else:
-            st.markdown(st.session_state.generated_sow)
+            st.markdown(preview_content, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
     if st.button("💾 Prepare Microsoft Word Document"):
