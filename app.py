@@ -8,11 +8,12 @@ import os
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.join(BASE_DIR, "diagrams")
 
-# Static assets
+# Static assets (ensure these files exist in the /diagrams folder)
 AWS_PN_LOGO = os.path.join(ASSETS_DIR, "aws partner logo.jpg")
 ONETURE_LOGO = os.path.join(ASSETS_DIR, "oneture logo1.jpg")
 AWS_ADV_LOGO = os.path.join(ASSETS_DIR, "aws advanced logo1.jpg")
 
+# Mapped Infra Costs
 SOW_COST_TABLE_MAP = { 
     "L1 Support Bot POC SOW": { "poc_cost": "3,536.40 USD" }, 
     "Beauty Advisor POC SOW": { 
@@ -28,6 +29,7 @@ SOW_COST_TABLE_MAP = {
     "PoC Scope Document": { "amazon_bedrock": "1,000 USD", "total": "$ 3,150" }
 }
 
+# Mapped Calculator Links
 CALCULATOR_LINKS = {
     "L1 Support Bot POC SOW": "https://calculator.aws/#/estimate?id=211ea64cba5a8f5dc09805f4ad1a1e598ef5238b",
     "Ready Search POC Scope of Work Document": "https://calculator.aws/#/estimate?id=f8bc48f1ae566b8ea1241994328978e7e86d3490",
@@ -153,7 +155,7 @@ def add_infra_cost_table(doc, sow_type_name, text_content):
         r = table.add_row().cells
         r[0].text = label
         r[1].text = cost
-        # Add hyperlinked "Estimate" or "Link"
+        # Add hyperlinked "Estimate"
         p = r[2].paragraphs[0]
         add_hyperlink(p, "Estimate", calc_url)
 
@@ -231,6 +233,7 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
     i = 0
     in_toc_section = False
     toc_already_added = False
+    overview_started = False
 
     while i < len(lines):
         line = lines[i].strip()
@@ -243,7 +246,7 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
         clean_text = re.sub(r'^#+\s*', '', line_clean).strip()
         upper_text = clean_text.upper()
 
-        # ---------------- SECTION 1: TOC ----------------
+        # ---------------- SECTION 1: TOC (PAGE 2) ----------------
         if "1 TABLE OF CONTENTS" in upper_text:
             if not toc_already_added:
                 doc.add_heading("1 TABLE OF CONTENTS", level=1)
@@ -252,14 +255,17 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
             i += 1
             continue
 
-        # Check if TOC ended
-        if in_toc_section and "2 PROJECT OVERVIEW" in upper_text:
+        # ---------------- SECTION 2: PROJECT OVERVIEW (PAGE 3) ----------------
+        if not overview_started and "2 PROJECT OVERVIEW" in upper_text:
             in_toc_section = False
             doc.add_page_break() # TOC on its own page
+            doc.add_heading(clean_text, level=1)
+            overview_started = True
+            i += 1
+            continue
 
         # ---------------- SECTION 4: ARCHITECTURE ----------------
-        if not in_toc_section and not architecture_rendered and "4 SOLUTION ARCHITECTURE" in upper_text:
-            architecture_rendered = True
+        if "4 SOLUTION ARCHITECTURE" in upper_text:
             doc.add_heading(clean_text, level=1)
             diagram_path = SOW_DIAGRAM_MAP.get(sow_type_name)
             if diagram_path and os.path.exists(diagram_path):
@@ -271,7 +277,7 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
             continue
 
         # ---------------- SECTION 5: COST TABLE ----------------
-        if not in_toc_section and not cost_table_rendered and "5 COST ESTIMATION TABLE" in upper_text:
+        if not cost_table_rendered and "5 COST ESTIMATION TABLE" in upper_text:
             cost_table_rendered = True
             doc.add_heading(clean_text, level=1)
             add_infra_cost_table(doc, sow_type_name, text_content)
@@ -409,16 +415,18 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             1 TABLE OF CONTENTS
             2 PROJECT OVERVIEW
               2.1 OBJECTIVE: {objective}
-              2.2 PROJECT TEAM:
-                  ### Partner Executive Sponsor
+              2.2 PROJECT SPONSOR(S) / STAKEHOLDER(S) / PROJECT TEAM
+                  You MUST display these four sub-headings clearly:
+                  Partner Executive Sponsor
                   {get_md(st.session_state.stakeholders["Partner"])}
-                  ### Customer Executive Sponsor
+                  Customer Executive Sponsor
                   {get_md(st.session_state.stakeholders["Customer"])}
-                  ### AWS Executive Sponsor
+                  AWS Executive Sponsor
                   {get_md(st.session_state.stakeholders["AWS"])}
-                  ### Project Escalation Contacts
+                  Project Escalation Contacts
                   {get_md(st.session_state.stakeholders["Escalation"])}
-              2.3 ASSUMPTIONS & DEPENDENCIES (Separate 2-5 bullet points for each)
+              2.3 ASSUMPTIONS & DEPENDENCIES
+                  Provide separate sections for "Assumptions" and "Dependencies", each with 2-5 distinct bullet points.
               2.4 Project Success Criteria
             3 SCOPE OF WORK - TECHNICAL PROJECT PLAN
             4 SOLUTION ARCHITECTURE / ARCHITECTURAL DIAGRAM
@@ -428,7 +436,7 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             RULES:
             - Section 4 must include: "Specifics to be discussed basis POC".
             - Section 5 must include: "Placeholder for Cost Table".
-            - No markdown bolding marks (**). Output: Markdown only.
+            - NO markdown bolding marks (**). Output: Markdown only.
             """
             payload = {
                 "contents": [{"parts": [{"text": prompt_text}]}],
