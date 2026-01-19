@@ -236,6 +236,7 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
             i += 1
             continue
 
+        # Table processing
         if line.startswith('|') and i + 1 < len(lines) and lines[i+1].strip().startswith('|'):
             table_lines = []
             while i < len(lines) and lines[i].strip().startswith('|'):
@@ -258,11 +259,13 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
                                 # Check for "Estimate" to insert hyperlink
                                 if "Estimate" in c_text:
                                     p = row_cells[idx].paragraphs[0]
-                                    prefix = c_text.replace("Estimate", "").strip()
-                                    if prefix:
-                                        p.add_run(prefix + " ")
+                                    # Handle text before the word "Estimate"
+                                    parts = c_text.split("Estimate")
+                                    p.add_run(parts[0])
                                     calc_url = CALCULATOR_LINKS.get(sow_type_name, "https://calculator.aws")
                                     add_hyperlink(p, "Estimate", calc_url)
+                                    if len(parts) > 1:
+                                        p.add_run(parts[1])
                                 else:
                                     row_cells[idx].text = c_text
                 doc.add_paragraph("")
@@ -429,7 +432,6 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             2 PROJECT OVERVIEW
               2.1 OBJECTIVE (Strictly 2-3 lines based on user input: {objective})
               2.2 PROJECT SPONSOR(S) / STAKEHOLDER(S) / PROJECT TEAM
-                  You MUST display the following FOUR sections clearly and distinctly, each with its own heading followed by the corresponding table:
                   ### Partner Executive Sponsor
                   {get_md(st.session_state.stakeholders["Partner"])}
                   
@@ -448,45 +450,27 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             5 COST ESTIMATION TABLE
             6 RESOURCES & COST ESTIMATES
 
-            CRITICAL INSERTION RULE (DO NOT VIOLATE):
-            Immediately AFTER the section "4 SOLUTION ARCHITECTURE / ARCHITECTURAL DIAGRAM" and BEFORE the section "6 RESOURCES & COST ESTIMATES", you MUST insert a section titled "5 COST ESTIMATION TABLE" with the following table:
-            
+            CRITICAL MANDATORY REQUIREMENT:
+            Immediately AFTER section 4 and BEFORE section 6, you MUST include section "5 COST ESTIMATION TABLE" with exactly this markdown table:
             | SystemInfra Cost / month | AWS Calculator Cost |
             | POC Development | $2,993.60 USD Estimate |
 
-            Note: In the second row, the word "Estimate" is the designated placeholder for the link.
+            CONTENT REQUIREMENTS FOR 2.4:
+            Include Accurate Compliance Validation, Structured Metadata Extraction, Ad Score Generation, Recommendations, and Usability Demonstration.
 
-            CONTENT REQUIREMENTS FOR 2.4 (PoC Success Criteria):
-            Strictly include these 5 outcomes:
-            1. Accurate Compliance Validation: Accurate detection of compliance/non-compliance against design guidelines; identification of errors (blocking) vs warnings (quality).
-            2. Structured Metadata (Tags) Extraction: Auto-generation of tags including compliance status, CTA type, Offer type, Products shown, Brands shown, and Brand ambassador presence.
-            3. Ad Score Generation: Working framework (0-100) reflecting quality and compliance.
-            4. Recommendations & Feedback: Clear actionable recommendations (e.g. "increase resolution") aligned with guidelines.
-            5. Usability & Workflow Demonstration: Seamless end-to-end flow: Upload -> Compliance -> Summary -> Score -> Recommendations.
+            CONTENT REQUIREMENTS FOR 3:
+            Include Infrastructure Setup, Core Workflows, Backend Components, and Testing and Feedback.
 
-            CONTENT REQUIREMENTS FOR 3 (SCOPE OF WORK - TECHNICAL PROJECT PLAN):
-            Strictly include these 4 phases:
-            1. Infrastructure Setup: Setup AWS services (Bedrock, S3, Lambda, etc.) and gather samples/guidelines.
-            2. Create Core Workflows: Banner Upload & Validation, Compliance & Tagging Flow, Issue Detection & Recommendation Flow, Ad Scoring Flow.
-            3. Backend Components: Implement Compliance Engine, build Tagging Module, and store in Amazon S3.
-            4. Testing and Feedback: Create PoC UI, validate accuracy against manual reviewer results, and gather stakeholder feedback.
-
-            CONTENT RULES:
-            - Section 4 must include the text: "Specifics to be discussed basis POC".
-            - NO filler text or introductory sentences between headers.
-            - Remove ALL markdown bolding marks (**) inside headings or body text.
-            - Use plain text output only.
-
-            INPUT DETAILS:
-            - SOW Document Type: {selected_sow_name}
-            - Timeline: {duration}
-            
-            Tone: Professional consulting. Output: Markdown only.
+            RULES:
+            - Section 4 must state "Specifics to be discussed basis POC".
+            - NO filler text between headers.
+            - Remove ALL markdown bolding (**) from headings and table cells.
+            - Output MUST be plain Markdown.
             """
             
             payload = {
                 "contents": [{"parts": [{"text": prompt_text}]}],
-                "systemInstruction": {"parts": [{"text": "You are a senior Solutions Architect. You generate detailed SOW documents. Strictly follow numbering and flow. Ensure stakeholder sections in 2.2 are distinct with their own sub-headers and tables. Sections 2.4 and 3 must be comprehensive as described. No markdown bolding."}]}
+                "systemInstruction": {"parts": [{"text": "Senior Solutions Architect. Generate detailed SOW documents. Strictly follow numbering. Ensure Section 5 is included as specified. No markdown bolding."}]}
             }
             
             try:
@@ -519,9 +503,9 @@ if st.session_state.generated_sow:
         match = re.search(header_pattern, st.session_state.generated_sow, re.MULTILINE)
         
         preview_text = st.session_state.generated_sow
-        # Handle the dynamic link in HTML preview
         calc_url_preview = CALCULATOR_LINKS.get(selected_sow_name, "https://calculator.aws")
-        preview_text = preview_text.replace("Estimate", f'<a href="{calc_url_preview}" target="_blank">Estimate</a>')
+        # Replace Estimate with a functional link in preview
+        preview_text = preview_text.replace("Estimate", f'<a href="{calc_url_preview}" target="_blank" style="color:#3b82f6;text-decoration:underline;">Estimate</a>')
 
         if match:
             start, end = match.span()
