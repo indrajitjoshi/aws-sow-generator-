@@ -171,8 +171,12 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
     from docx.enum.text import WD_ALIGN_PARAGRAPH
 
     doc = Document()
-    architecture_rendered = False
-    cost_table_rendered = False
+    
+    # State tracking to prevent duplicates
+    rendered_sections = {
+        "1": False, "2": False, "3": False, 
+        "4": False, "5": False, "6": False
+    }
 
     # --- PAGE 1: COVER PAGE ---
     p_top = doc.add_paragraph()
@@ -232,12 +236,11 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
     lines = text_content.split('\n')
     i = 0
     in_toc_section = False
-    toc_already_added = False
-    overview_started = False
 
     while i < len(lines):
         line = lines[i].strip()
         if not line:
+            # Prevent excessive spacing, but allow standard paragraph breaks
             if i > 0 and lines[i-1].strip(): doc.add_paragraph("")
             i += 1
             continue
@@ -246,47 +249,65 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
         clean_text = re.sub(r'^#+\s*', '', line_clean).strip()
         upper_text = clean_text.upper()
 
+        # Check for main headings (starting with # 1, # 2, etc. OR just 1, 2 if at line start)
+        is_main_heading = False
+        section_num = None
+        main_match = re.match(r'^#?\s*([1-6])(\s|\.|$)', clean_text)
+        if main_match:
+            section_num = main_match.group(1)
+            is_main_heading = True
+
         # ---------------- SECTION 1: TOC (PAGE 2) ----------------
-        if "1 TABLE OF CONTENTS" in upper_text:
-            if not toc_already_added:
+        if is_main_heading and section_num == "1":
+            if not rendered_sections["1"]:
                 doc.add_heading("1 TABLE OF CONTENTS", level=1)
-                toc_already_added = True
+                rendered_sections["1"] = True
                 in_toc_section = True
             i += 1
             continue
 
         # ---------------- SECTION 2: PROJECT OVERVIEW (PAGE 3) ----------------
-        if not overview_started and "2 PROJECT OVERVIEW" in upper_text:
-            in_toc_section = False
-            doc.add_page_break() # End TOC page
-            doc.add_heading(clean_text, level=1)
-            overview_started = True
+        if is_main_heading and section_num == "2":
+            if not rendered_sections["2"]:
+                in_toc_section = False
+                doc.add_page_break() # TOC isolated on Page 2
+                doc.add_heading("2 PROJECT OVERVIEW", level=1)
+                rendered_sections["2"] = True
             i += 1
             continue
 
         # ---------------- SECTION 4: ARCHITECTURE ----------------
-        if not in_toc_section and "4 SOLUTION ARCHITECTURE" in upper_text:
-            if not architecture_rendered:
-                architecture_rendered = True
+        if is_main_heading and section_num == "4":
+            if not rendered_sections["4"]:
                 doc.add_heading(clean_text, level=1)
+                rendered_sections["4"] = True
                 diagram_path = SOW_DIAGRAM_MAP.get(sow_type_name)
                 if diagram_path and os.path.exists(diagram_path):
                     doc.add_paragraph("")
                     doc.add_picture(diagram_path, width=Inches(6.0))
                     cap = doc.add_paragraph(f"{sow_type_name} – Architecture Diagram")
                     cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                i += 1
-                continue
-
-        # ---------------- SECTION 5: COST TABLE ----------------
-        if not in_toc_section and not cost_table_rendered and "5 COST ESTIMATION TABLE" in upper_text:
-            cost_table_rendered = True
-            doc.add_heading(clean_text, level=1)
-            add_infra_cost_table(doc, sow_type_name, text_content)
             i += 1
             continue
 
-        # ---------------- TABLE PARSING (General) ----------------
+        # ---------------- SECTION 5: COST TABLE ----------------
+        if is_main_heading and section_num == "5":
+            if not rendered_sections["5"]:
+                doc.add_heading("5 COST ESTIMATION TABLE", level=1)
+                rendered_sections["5"] = True
+                add_infra_cost_table(doc, sow_type_name, text_content)
+            i += 1
+            continue
+            
+        # ---------------- SECTION 3 & 6 ----------------
+        if is_main_heading and section_num in ["3", "6"]:
+            if not rendered_sections[section_num]:
+                doc.add_heading(clean_text, level=1)
+                rendered_sections[section_num] = True
+            i += 1
+            continue
+
+        # ---------------- TABLE PARSING ----------------
         if line.startswith('|') and i + 1 < len(lines) and lines[i+1].strip().startswith('|'):
             table_lines = []
             while i < len(lines) and lines[i].strip().startswith('|'):
@@ -304,10 +325,8 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
                         if idx < len(row_cells): row_cells[idx].text = c
             continue
 
-        # ---------------- HEADINGS ----------------
-        if line.startswith('# '):
-            doc.add_heading(clean_text, level=1)
-        elif line.startswith('## '):
+        # ---------------- HEADINGS (Levels 2 and 3) ----------------
+        if line.startswith('## '):
             h = doc.add_heading(clean_text, level=2)
             if in_toc_section: h.paragraph_format.left_indent = Inches(0.4)
         elif line.startswith('### '):
@@ -316,18 +335,19 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
         
         # ---------------- BULLETS ----------------
         elif line.startswith('- ') or line.startswith('* '):
-            p = doc.add_paragraph(clean_text[2:], style="List Bullet")
+            p = doc.add_paragraph(clean_text[2:] if clean_text.startswith('- ') or clean_text.startswith('* ') else clean_text, style="List Bullet")
             if in_toc_section: p.paragraph_format.left_indent = Inches(0.4)
         
         # ---------------- NORMAL TEXT ----------------
         else:
             p = doc.add_paragraph(clean_text)
-            segregation_keywords = [
+            # Apply bold to specific sub-header keywords found in Section 2
+            bold_keywords = [
                 "PARTNER EXECUTIVE SPONSOR", "CUSTOMER EXECUTIVE SPONSOR", 
                 "AWS EXECUTIVE SPONSOR", "PROJECT ESCALATION CONTACTS", 
-                "ASSUMPTIONS", "DEPENDENCIES"
+                "ASSUMPTIONS:", "DEPENDENCIES:", "ASSUMPTIONS (", "DEPENDENCIES ("
             ]
-            if any(k in upper_text for k in segregation_keywords):
+            if any(k in upper_text for k in bold_keywords):
                 if p.runs: p.runs[0].bold = True
         i += 1
             
@@ -417,7 +437,7 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             prompt_text = f"""
             Generate a COMPLETE formal enterprise SOW for {selected_sow_name} in {final_industry}.
             
-            STRICT PAGE & SECTION FLOW (DO NOT DISTURB THIS ORDER):
+            STRICT SECTION FLOW (OUTPUT EACH SECTION ONCE, NO REPETITION):
             1 TABLE OF CONTENTS
             2 PROJECT OVERVIEW
               2.1 OBJECTIVE: {objective}
@@ -431,8 +451,8 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
                   ### Project Escalation Contacts
                   {get_md(st.session_state.stakeholders["Escalation"])}
               2.3 ASSUMPTIONS & DEPENDENCIES
-                  - Include a subheading 'Assumptions' with 2-5 distinct bullet points.
-                  - Include a subheading 'Dependencies' with 2-5 distinct bullet points.
+                  - Provide a heading 'Assumptions' with 2-5 distinct bullet points.
+                  - Provide a heading 'Dependencies' with 2-5 distinct bullet points.
               2.4 Project Success Criteria
             3 SCOPE OF WORK - TECHNICAL PROJECT PLAN
             4 SOLUTION ARCHITECTURE / ARCHITECTURAL DIAGRAM
@@ -443,11 +463,11 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             - Section 4 must include: "Specifics to be discussed basis POC".
             - Section 5 must include exactly: "Placeholder for Cost Table".
             - NO markdown bolding marks (**). Output: Markdown only.
-            - Ensure Section 2.2 uses the 4 specific subheadings provided.
+            - Ensure main headings (1-6) start with the number and name exactly once.
             """
             payload = {
                 "contents": [{"parts": [{"text": prompt_text}]}],
-                "systemInstruction": {"parts": [{"text": "You are a senior Solutions Architect. Strictly follow the numbering and flow. Page 1 is cover, Page 2 is TOC only, Page 3 starts the Overview. No markdown bolding."}]}
+                "systemInstruction": {"parts": [{"text": "You are a senior Solutions Architect. Strictly follow numbering and flow. Page 1 is cover, Page 2 is TOC only, Page 3 starts the Overview. Do not repeat sections in the body text."}]}
             }
             try:
                 res = requests.post(url, json=payload)
