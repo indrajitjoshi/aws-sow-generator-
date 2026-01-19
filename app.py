@@ -36,6 +36,19 @@ SOW_DIAGRAM_MAP = {
         os.path.join(BASE_DIR, "diagrams", "PoC Scope Document.png")
 }
 
+# --- CALCULATOR LINK MAPPING ---
+CALCULATOR_LINKS = {
+    "L1 Support Bot POC SOW": "https://calculator.aws/#/estimate?id=211ea64cba5a8f5dc09805f4ad1a1e598ef5238b",
+    "Ready Search POC Scope of Work Document": "https://calculator.aws/#/estimate?id=f8bc48f1ae566b8ea1241994328978e7e86d3490",
+    "AI based Image Enhancement POC SOW": "https://calculator.aws/#/estimate?id=9a3e593b92b796acecf31a78aec17d7eb957d1e5",
+    "Beauty Advisor POC SOW": "https://calculator.aws/#/estimate?id=3f89756a35f7bac7b2cd88d95f3e9aba9be9b0eb",
+    "AI based Image Inspection POC SOW": "https://calculator.aws/#/estimate?id=72c56f93b0c0e101d67a46af4f4fe9886eb93342",
+    "Gen AI for SOP POC SOW": "https://calculator.aws/#/estimate?id=c21e9b242964724bf83556cfeee821473bb935d1",
+    "Project Scope Document": "https://calculator.aws/#/estimate?id=37339d6e34c73596559fe09ca16a0ac2ec4c4252",
+    "Gen AI Speech To Speech": "https://calculator.aws/#/estimate?id=8444ae26e6d61e5a43e8e743578caa17fd7f3e69",
+    "PoC Scope Document": "https://calculator.aws/#/estimate?id=420ed9df095e7824a144cb6c0e9db9e7ec3c4153"
+}
+
 # --- CONFIGURATION ---
 st.set_page_config(
     page_title="GenAI SOW Architect", 
@@ -86,6 +99,30 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
     from docx import Document
     from docx.shared import Inches, Pt, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
+    import docx.oxml.shared
+    import docx.opc.constants
+
+    def add_hyperlink(paragraph, text, url):
+        # Helper to add hyperlinks to docx paragraphs
+        part = paragraph.part
+        r_id = part.relate_to(url, docx.opc.constants.RELATIONSHIP_TYPE.HYPERLINK, is_external=True)
+        hyperlink = docx.oxml.shared.OxmlElement('w:hyperlink')
+        hyperlink.set(docx.oxml.shared.qn('r:id'), r_id, )
+        new_run = docx.oxml.shared.OxmlElement('w:r')
+        rPr = docx.oxml.shared.OxmlElement('w:rPr')
+        c = docx.oxml.shared.OxmlElement('w:color')
+        c.set(docx.oxml.shared.qn('w:val'), '0000FF')
+        u = docx.oxml.shared.OxmlElement('w:u')
+        u.set(docx.oxml.shared.qn('w:val'), 'single')
+        rPr.append(c)
+        rPr.append(u)
+        new_run.append(rPr)
+        t = docx.oxml.shared.OxmlElement('w:t')
+        t.text = text
+        new_run.append(t)
+        hyperlink.append(new_run)
+        paragraph._p.append(hyperlink)
+        return hyperlink
 
     doc = Document()
     
@@ -218,7 +255,16 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
                         r_data = [c.strip() for c in row_str.split('|') if c.strip()]
                         for idx, c_text in enumerate(r_data):
                             if idx < len(row_cells):
-                                row_cells[idx].text = c_text
+                                # Check for "Estimate" to insert hyperlink
+                                if "Estimate" in c_text:
+                                    p = row_cells[idx].paragraphs[0]
+                                    prefix = c_text.replace("Estimate", "").strip()
+                                    if prefix:
+                                        p.add_run(prefix + " ")
+                                    calc_url = CALCULATOR_LINKS.get(sow_type_name, "https://calculator.aws")
+                                    add_hyperlink(p, "Estimate", calc_url)
+                                else:
+                                    row_cells[idx].text = c_text
                 doc.add_paragraph("")
             continue
 
@@ -288,17 +334,7 @@ with st.sidebar:
     st.divider()
     st.header("📋 1. Project Intake")
 
-    sow_type_options = [
-        "L1 Support Bot POC SOW",
-        "Ready Search POC Scope of Work Document",
-        "AI based Image Enhancement POC SOW",
-        "Beauty Advisor POC SOW",
-        "AI based Image Inspection POC SOW",
-        "Gen AI for SOP POC SOW",
-        "Project Scope Document",
-        "Gen AI Speech To Speech",
-        "PoC Scope Document"
-    ]
+    sow_type_options = list(SOW_DIAGRAM_MAP.keys())
     selected_sow_name = st.selectbox("1.1 Scope of Work Type", sow_type_options)
 
     # Sidebar architecture preview
@@ -409,7 +445,16 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
               2.4 PoC Success Criteria
             3 SCOPE OF WORK – TECHNICAL PROJECT PLAN
             4 SOLUTION ARCHITECTURE / ARCHITECTURAL DIAGRAM
+            5 COST ESTIMATION TABLE
             6 RESOURCES & COST ESTIMATES
+
+            CRITICAL INSERTION RULE (DO NOT VIOLATE):
+            Immediately AFTER the section "4 SOLUTION ARCHITECTURE / ARCHITECTURAL DIAGRAM" and BEFORE the section "6 RESOURCES & COST ESTIMATES", you MUST insert a section titled "5 COST ESTIMATION TABLE" with the following table:
+            
+            | SystemInfra Cost / month | AWS Calculator Cost |
+            | POC Development | $2,993.60 USD Estimate |
+
+            Note: In the second row, the word "Estimate" is the designated placeholder for the link.
 
             CONTENT REQUIREMENTS FOR 2.4 (PoC Success Criteria):
             Strictly include these 5 outcomes:
@@ -473,15 +518,20 @@ if st.session_state.generated_sow:
         header_pattern = r'(?i)(^#*\s*4\s+SOLUTION ARCHITECTURE.*)'
         match = re.search(header_pattern, st.session_state.generated_sow, re.MULTILINE)
         
+        preview_text = st.session_state.generated_sow
+        # Handle the dynamic link in HTML preview
+        calc_url_preview = CALCULATOR_LINKS.get(selected_sow_name, "https://calculator.aws")
+        preview_text = preview_text.replace("Estimate", f'<a href="{calc_url_preview}" target="_blank">Estimate</a>')
+
         if match:
             start, end = match.span()
-            st.markdown(st.session_state.generated_sow[:end])
+            st.markdown(preview_text[:end], unsafe_allow_html=True)
             diagram_path_out = SOW_DIAGRAM_MAP.get(selected_sow_name)
             if diagram_path_out and os.path.exists(diagram_path_out):
                 st.image(diagram_path_out, caption=f"{selected_sow_name} Architecture", use_container_width=True)
-            st.markdown(st.session_state.generated_sow[end:])
+            st.markdown(preview_text[end:], unsafe_allow_html=True)
         else:
-            st.markdown(st.session_state.generated_sow)
+            st.markdown(preview_text, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
     
     st.write("")
