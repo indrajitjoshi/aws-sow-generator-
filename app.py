@@ -42,6 +42,7 @@ CALCULATOR_LINKS = {
     "Ready Search POC Scope of Work Document": "https://calculator.aws/#/estimate?id=f8bc48f1ae566b8ea1241994328978e7e86d3490",
     "AI based Image Enhancement POC SOW": "https://calculator.aws/#/estimate?id=9a3e593b92b796acecf31a78aec17d7eb957d1e5",
     "Beauty Advisor POC SOW": "https://calculator.aws/#/estimate?id=3f89756a35f7bac7b2cd88d95f3e9aba9be9b0eb",
+    "Beauty Advisor Production": "https://calculator.aws/#/estimate?id=4d7f092e819c799f680fd14f8de3f181f565c48e",
     "AI based Image Inspection POC SOW": "https://calculator.aws/#/estimate?id=72c56f93b0c0e101d67a46af4f4fe9886eb93342",
     "Gen AI for SOP POC SOW": "https://calculator.aws/#/estimate?id=c21e9b242964724bf83556cfeee821473bb935d1",
     "Project Scope Document": "https://calculator.aws/#/estimate?id=37339d6e34c73596559fe09ca16a0ac2ec4c4252",
@@ -203,6 +204,7 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
         clean_text = re.sub(r'^#+\s*', '', line_clean).strip()
         upper_text = clean_text.upper()
 
+        # Trigger for Section 4: Insert Architecture Diagram
         if "4 SOLUTION ARCHITECTURE" in upper_text and (line.startswith('#') or line.startswith('4')):
             doc.add_heading(clean_text, level=1)
             diagram_path = SOW_DIAGRAM_MAP.get(sow_type_name)
@@ -239,7 +241,7 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
             while i < len(lines) and lines[i].strip().startswith('|'):
                 table_lines.append(lines[i].strip())
                 i += 1
-            if len(table_lines) >= 2: # Robust detection for 2+ lines
+            if len(table_lines) >= 3:
                 data_lines = [l for l in table_lines if not set(l).issubset({'|', '-', ' ', ':'})]
                 if len(data_lines) >= 2:
                     headers = [c.strip() for c in data_lines[0].split('|') if c.strip()]
@@ -253,11 +255,17 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
                         r_data = [c.strip() for c in row_str.split('|') if c.strip()]
                         for idx, c_text in enumerate(r_data):
                             if idx < len(row_cells):
+                                # Logic to insert clickable link for Section 5
                                 if "Estimate" in c_text:
                                     p = row_cells[idx].paragraphs[0]
                                     parts = c_text.split("Estimate")
                                     p.add_run(parts[0])
+                                    
+                                    # Handle Beauty Advisor Logic
                                     calc_url = CALCULATOR_LINKS.get(sow_type_name, "https://calculator.aws")
+                                    if sow_type_name == "Beauty Advisor POC SOW" and "Production Development" in text_content:
+                                        calc_url = CALCULATOR_LINKS["Beauty Advisor Production"]
+                                        
                                     add_hyperlink(p, "Estimate", calc_url)
                                     if len(parts) > 1: p.add_run(parts[1])
                                 else:
@@ -269,22 +277,31 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
             doc.add_heading(clean_text, level=1)
         elif line.startswith('## '):
             p = doc.add_heading(clean_text, level=2)
-            if in_toc_section: p.paragraph_format.left_indent = Inches(0.4)
+            if in_toc_section:
+                p.paragraph_format.left_indent = Inches(0.4)
         elif line.startswith('### '):
             p = doc.add_heading(clean_text, level=3)
-            if in_toc_section: p.paragraph_format.left_indent = Inches(0.8)
+            if in_toc_section:
+                p.paragraph_format.left_indent = Inches(0.8)
         elif line.startswith('- ') or line.startswith('* '):
             bullet_text = re.sub(r'^[-*]\s*', '', clean_text)
             p = doc.add_paragraph(bullet_text, style='List Bullet')
-            if in_toc_section: p.paragraph_format.left_indent = Inches(0.4)
+            if in_toc_section:
+                p.paragraph_format.left_indent = Inches(0.4)
         else:
             p = doc.add_paragraph(clean_text)
             if in_toc_section and len(clean_text) > 3 and clean_text[0].isdigit():
                  p.paragraph_format.left_indent = Inches(0.4)
             
-            segregation_keywords = ["PARTNER EXECUTIVE SPONSOR", "CUSTOMER EXECUTIVE SPONSOR", "AWS EXECUTIVE SPONSOR", "PROJECT ESCALATION CONTACTS", "DEPENDENCIES:", "ASSUMPTIONS:", "SPONSOR:", "CONTACTS:"]
+            # Segregation bolding logic for all key sections and stakeholder sub-headers
+            segregation_keywords = [
+                "PARTNER EXECUTIVE SPONSOR", "CUSTOMER EXECUTIVE SPONSOR", 
+                "AWS EXECUTIVE SPONSOR", "PROJECT ESCALATION CONTACTS",
+                "DEPENDENCIES:", "ASSUMPTIONS:", "SPONSOR:", "CONTACTS:"
+            ]
             if any(key in upper_text for key in segregation_keywords):
-                if p.runs: p.runs[0].bold = True
+                if p.runs:
+                    p.runs[0].bold = True
         i += 1
             
     bio = io.BytesIO()
@@ -322,9 +339,20 @@ with st.sidebar:
     st.divider()
     st.header("📋 1. Project Intake")
 
-    sow_type_options = ["L1 Support Bot POC SOW", "Ready Search POC Scope of Work Document", "AI based Image Enhancement POC SOW", "Beauty Advisor POC SOW", "AI based Image Inspection POC SOW", "Gen AI for SOP POC SOW", "Project Scope Document", "Gen AI Speech To Speech", "PoC Scope Document"]
+    sow_type_options = [
+        "L1 Support Bot POC SOW",
+        "Ready Search POC Scope of Work Document",
+        "AI based Image Enhancement POC SOW",
+        "Beauty Advisor POC SOW",
+        "AI based Image Inspection POC SOW",
+        "Gen AI for SOP POC SOW",
+        "Project Scope Document",
+        "Gen AI Speech To Speech",
+        "PoC Scope Document"
+    ]
     selected_sow_name = st.selectbox("1.1 Scope of Work Type", sow_type_options)
 
+    # Sidebar architecture preview
     st.divider()
     st.header("🧩 Architecture Preview")
     diagram_path_sidebar = SOW_DIAGRAM_MAP.get(selected_sow_name)
@@ -346,11 +374,13 @@ with st.sidebar:
 # --- MAIN UI ---
 st.title("🚀 GenAI Scope of Work Architect")
 
+# --- STEP 0: COVER PAGE BRANDING ---
 st.header("📸 Cover Page Branding")
 brand_col1, brand_col2 = st.columns(2)
 with brand_col1:
     aws_pn_logo = st.file_uploader("Top Left: AWS Partner Network Logo", type=['png', 'jpg', 'jpeg'], key="aws_pn")
     customer_logo = st.file_uploader("Slot 1: Customer Logo", type=['png', 'jpg', 'jpeg'], key="cust_logo")
+
 with brand_col2:
     oneture_logo = st.file_uploader("Slot 2: Oneture Logo", type=['png', 'jpg', 'jpeg'], key="one_logo")
     aws_adv_logo = st.file_uploader("Slot 3: AWS Advanced Logo", type=['png', 'jpg', 'jpeg'], key="aws_adv")
@@ -358,47 +388,72 @@ with brand_col2:
 
 st.divider()
 
+# --- STEP 2: OBJECTIVES & STAKEHOLDERS ---
 st.header("2. Objectives & Stakeholders")
+
 st.subheader("🎯 2.1 Objective")
-objective = st.text_area("Define the core business objective:", placeholder="e.g., Development of a Gen AI based WIMO Bot...", height=120)
-outcomes = st.multiselect("Select success metrics:", ["Reduced Response Time", "Automated SOP Mapping", "Cost Savings", "Higher Accuracy", "Metadata Richness", "Revenue Growth", "Security Compliance", "Scalability", "Integration Feasibility"], default=["Higher Accuracy", "Cost Savings"])
+objective = st.text_area(
+    "Define the core business objective:", 
+    placeholder="e.g., Development of a Gen AI based WIMO Bot to demonstrate feasibility...",
+    height=120
+)
+outcomes = st.multiselect(
+    "Select success metrics:", 
+    ["Reduced Response Time", "Automated SOP Mapping", "Cost Savings", "Higher Accuracy", "Metadata Richness", "Revenue Growth", "Security Compliance", "Scalability", "Integration Feasibility"],
+    default=["Higher Accuracy", "Cost Savings"]
+)
 
 st.divider()
+
 st.subheader("👥 2.2 Project Sponsor(s) / Stakeholder(s) / Project Team")
 col_team1, col_team2 = st.columns(2)
+
 with col_team1:
     st.markdown('<div class="stakeholder-header">Partner Executive Sponsor</div>', unsafe_allow_html=True)
     st.session_state.stakeholders["Partner"] = st.data_editor(st.session_state.stakeholders["Partner"], num_rows="dynamic", use_container_width=True, key="ed_partner")
+
     st.markdown('<div class="stakeholder-header">AWS Executive Sponsor</div>', unsafe_allow_html=True)
     st.session_state.stakeholders["AWS"] = st.data_editor(st.session_state.stakeholders["AWS"], num_rows="dynamic", use_container_width=True, key="ed_aws")
+
 with col_team2:
     st.markdown('<div class="stakeholder-header">Customer Executive Sponsor</div>', unsafe_allow_html=True)
     st.session_state.stakeholders["Customer"] = st.data_editor(st.session_state.stakeholders["Customer"], num_rows="dynamic", use_container_width=True, key="ed_customer")
+
     st.markdown('<div class="stakeholder-header">Project Escalation Contacts</div>', unsafe_allow_html=True)
     st.session_state.stakeholders["Escalation"] = st.data_editor(st.session_state.stakeholders["Escalation"], num_rows="dynamic", use_container_width=True, key="ed_escalation")
 
+# --- GENERATION ---
 if st.button("✨ Generate SOW Document", type="primary", use_container_width=True):
-    if not api_key: st.warning("⚠️ Enter a Gemini API Key.")
-    elif not objective: st.error("⚠️ Business Objective is required.")
+    if not api_key:
+        st.warning("⚠️ Enter a Gemini API Key in the sidebar.")
+    elif not objective:
+        st.error("⚠️ Business Objective is required.")
     else:
         import requests
         with st.spinner(f"Architecting {selected_sow_name}..."):
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={api_key}"
-            def get_md(df): return df.to_markdown(index=False)
-            prompt_text = f"""
-            Generate a COMPLETE formal enterprise SOW for {selected_sow_name} in {final_industry}.
             
-            STRICT SECTION FLOW:
-            1 TABLE OF CONTENTS
+            def get_md(df):
+                return df.to_markdown(index=False)
+
+            prompt_text = f"""
+            Generate a COMPLETE formal enterprise Scope of Work (SOW) for {selected_sow_name} in {final_industry}.
+            
+            STRICT PAGE & SECTION FLOW:
+            1 TABLE OF CONTENTS (Indented sub-items)
             2 PROJECT OVERVIEW
-              2.1 OBJECTIVE: {objective}
-              2.2 PROJECT TEAM:
+              2.1 OBJECTIVE (Strictly 2-3 lines based on user input: {objective})
+              2.2 PROJECT SPONSOR(S) / STAKEHOLDER(S) / PROJECT TEAM
+                  You MUST display the following FOUR sections clearly and distinctly, each with its own heading followed by the corresponding table:
                   ### Partner Executive Sponsor
                   {get_md(st.session_state.stakeholders["Partner"])}
+                  
                   ### Customer Executive Sponsor
                   {get_md(st.session_state.stakeholders["Customer"])}
+                  
                   ### AWS Executive Sponsor
                   {get_md(st.session_state.stakeholders["AWS"])}
+                  
                   ### Project Escalation Contacts
                   {get_md(st.session_state.stakeholders["Escalation"])}
               2.3 ASSUMPTIONS & DEPENDENCIES
@@ -409,47 +464,108 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             6 RESOURCES & COST ESTIMATES
 
             CRITICAL INSERTION RULE:
-            Immediately AFTER section 4 and BEFORE section 6, you MUST insert section 5 with exactly this markdown table format:
+            Immediately AFTER Section 4 and BEFORE Section 6, you MUST insert Section "5 COST ESTIMATION TABLE" with exactly this table:
             | SystemInfra Cost / month | AWS Calculator Cost |
-            | --- | --- |
             | POC Development | $2,993.60 USD Estimate |
 
-            RULES:
-            - Section 4 must state: "Specifics to be discussed basis POC".
-            - No markdown bolding (**). Plain text Markdown only.
-            - Do not omit the divider line (---) in the table.
+            CONTENT REQUIREMENTS FOR 2.4 (PoC Success Criteria):
+            Strictly include these 5 outcomes:
+            1. Accurate Compliance Validation: Accurate detection of compliance/non-compliance against design guidelines; identification of errors (blocking) vs warnings (quality).
+            2. Structured Metadata (Tags) Extraction: Auto-generation of tags including compliance status, CTA type, Offer type, Products shown, Brands shown, and Brand ambassador presence.
+            3. Ad Score Generation: Working framework (0-100) reflecting quality and compliance.
+            4. Recommendations & Feedback: Clear actionable recommendations (e.g. "increase resolution") aligned with guidelines.
+            5. Usability & Workflow Demonstration: Seamless end-to-end flow: Upload -> Compliance -> Summary -> Score -> Recommendations.
+
+            CONTENT REQUIREMENTS FOR 3 (SCOPE OF WORK - TECHNICAL PROJECT PLAN):
+            Strictly include these 4 phases:
+            1. Infrastructure Setup: Setup AWS services (Bedrock, S3, Lambda, etc.) and gather samples/guidelines.
+            2. Create Core Workflows: Banner Upload & Validation, Compliance & Tagging Flow, Issue Detection & Recommendation Flow, Ad Scoring Flow.
+            3. Backend Components: Implement Compliance Engine, build Tagging Module, and store in Amazon S3.
+            4. Testing and Feedback: Create PoC UI, validate accuracy against manual reviewer results, and gather stakeholder feedback.
+
+            CONTENT RULES:
+            - Section 4 must include the text: "Specifics to be discussed basis POC".
+            - NO filler text or introductory sentences between headers.
+            - Remove ALL markdown bolding marks (**) inside headings or body text.
+            - Use plain text output only.
+
+            INPUT DETAILS:
+            - SOW Document Type: {selected_sow_name}
+            - Timeline: {duration}
+            
+            Tone: Professional consulting. Output: Markdown only.
             """
-            payload = {"contents": [{"parts": [{"text": prompt_text}]}], "systemInstruction": {"parts": [{"text": "Senior Solutions Architect. Ensure Section 5 is included precisely as requested with the table divider. No bolding."}]}}
+            
+            payload = {
+                "contents": [{"parts": [{"text": prompt_text}]}],
+                "systemInstruction": {"parts": [{"text": "You are a senior Solutions Architect. You generate detailed SOW documents. Strictly follow numbering and flow. Ensure stakeholder sections in 2.2 are distinct with their own sub-headers and tables. Sections 2.4 and 3 must be comprehensive as described. No markdown bolding."}]}
+            }
+            
             try:
                 res = requests.post(url, json=payload)
                 if res.status_code == 200:
                     st.session_state.generated_sow = res.json()['candidates'][0]['content']['parts'][0]['text']
                     st.balloons()
-                else: st.error(f"API Error: {res.text}")
-            except Exception as e: st.error(f"Error: {str(e)}")
+                else:
+                    st.error(f"API Error: {res.text}")
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
 
+# --- STEP 3: REVIEW & EXPORT ---
 if st.session_state.generated_sow:
     st.divider()
     st.header("3. Review & Export")
     tab_edit, tab_preview = st.tabs(["✍️ Document Editor", "📄 Visual Preview"])
+    
     with tab_edit:
-        st.session_state.generated_sow = st.text_area("Modify content:", value=st.session_state.generated_sow, height=700, key="sow_editor")
+        st.session_state.generated_sow = st.text_area(
+            label="Modify generated content:", 
+            value=st.session_state.generated_sow, 
+            height=700, 
+            key="sow_editor"
+        )
+    
     with tab_preview:
         st.markdown(f'<div class="sow-preview">', unsafe_allow_html=True)
-        calc_url_prev = CALCULATOR_LINKS.get(selected_sow_name, "https://calculator.aws")
-        preview_html = st.session_state.generated_sow.replace("Estimate", f'<a href="{calc_url_prev}" target="_blank" style="color:#3b82f6; text-decoration: underline;">Estimate</a>')
         header_pattern = r'(?i)(^#*\s*4\s+SOLUTION ARCHITECTURE.*)'
-        match = re.search(header_pattern, preview_html, re.MULTILINE)
+        match = re.search(header_pattern, st.session_state.generated_sow, re.MULTILINE)
+        
+        # Prepare content for preview with dynamic link
+        calc_url = CALCULATOR_LINKS.get(selected_sow_name, "https://calculator.aws")
+        if selected_sow_name == "Beauty Advisor POC SOW" and "Production Development" in st.session_state.generated_sow:
+            calc_url = CALCULATOR_LINKS["Beauty Advisor Production"]
+            
+        preview_content = st.session_state.generated_sow.replace("Estimate", f'<a href="{calc_url}" target="_blank" style="color:#3b82f6; text-decoration: underline;">Estimate</a>')
+
         if match:
             start, end = match.span()
-            st.markdown(preview_html[:end], unsafe_allow_html=True)
+            st.markdown(preview_content[:end], unsafe_allow_html=True)
             diagram_path_out = SOW_DIAGRAM_MAP.get(selected_sow_name)
             if diagram_path_out and os.path.exists(diagram_path_out):
                 st.image(diagram_path_out, caption=f"{selected_sow_name} Architecture", use_container_width=True)
-            st.markdown(preview_html[end:], unsafe_allow_html=True)
-        else: st.markdown(preview_html, unsafe_allow_html=True)
+            st.markdown(preview_content[end:], unsafe_allow_html=True)
+        else:
+            st.markdown(preview_content, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
+    
+    st.write("")
+    
     if st.button("💾 Prepare Microsoft Word Document"):
-        branding_info = {'sow_name': selected_sow_name, 'aws_pn_logo_bytes': aws_pn_logo.getvalue() if aws_pn_logo else None, 'customer_logo_bytes': customer_logo.getvalue() if customer_logo else None, 'oneture_logo_bytes': oneture_logo.getvalue() if oneture_logo else None, 'aws_adv_logo_bytes': aws_adv_logo.getvalue() if aws_adv_logo else None, 'doc_date_str': doc_date.strftime("%d %B %Y")}
+        branding_info = {
+            'sow_name': selected_sow_name,
+            'aws_pn_logo_bytes': aws_pn_logo.getvalue() if aws_pn_logo else None,
+            'customer_logo_bytes': customer_logo.getvalue() if customer_logo else None,
+            'oneture_logo_bytes': oneture_logo.getvalue() if oneture_logo else None,
+            'aws_adv_logo_bytes': aws_adv_logo.getvalue() if aws_adv_logo else None,
+            'doc_date_str': doc_date.strftime("%d %B %Y")
+        }
+        
         docx_data = create_docx_logic(st.session_state.generated_sow, branding_info, selected_sow_name)
-        st.download_button("📥 Download Now (.docx)", data=docx_data, file_name=f"SOW_{selected_sow_name.replace(' ', '_')}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+        
+        st.download_button(
+            label="📥 Download Now (.docx)", 
+            data=docx_data, 
+            file_name=f"SOW_{selected_sow_name.replace(' ', '_')}.docx", 
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
+            use_container_width=True
+        )
