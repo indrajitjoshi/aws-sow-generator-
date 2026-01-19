@@ -3,6 +3,8 @@ from datetime import date
 import io
 import re
 import os
+import time
+import requests
 
 # --- FILE PATHING & DIAGRAM MAPPING ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -129,7 +131,7 @@ def add_infra_cost_table(doc, sow_type_name, text_content):
     if not cost_data:
         return
 
-    # Determine individual calculator link
+    # Determine calculator link
     calc_url = CALCULATOR_LINKS.get(sow_type_name, "https://calculator.aws/#/")
     if sow_type_name == "Beauty Advisor POC SOW" and "Production Development" in text_content:
         calc_url = CALCULATOR_LINKS["Beauty Advisor Production"]
@@ -155,7 +157,6 @@ def add_infra_cost_table(doc, sow_type_name, text_content):
         r = table.add_row().cells
         r[0].text = label
         r[1].text = cost
-        # Inject hyperlinked "Estimate"
         p = r[2].paragraphs[0]
         add_hyperlink(p, "Estimate", calc_url)
 
@@ -172,7 +173,7 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
 
     doc = Document()
     
-    # Tracking to ensure rigid flow and no repetitions
+    # State tracking to ensure rigid flow and prevent duplicates
     rendered_sections = {
         "1": False, "2": False, "3": False, 
         "4": False, "5": False, "6": False
@@ -266,13 +267,13 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
                 current_header_id = h_id
                 break
 
-        # Remove unnecessary commentary, triggers, and AI filler
+        # Remove unnecessary commentary, triggers, and redundant AI descriptions
         irrelevant_keywords = ["PLACEHOLDER FOR COST TABLE", "SPECIFICS TO BE DISCUSSED BASIS POC"]
         if any(kw in upper_text for kw in irrelevant_keywords):
             i += 1
             continue
 
-        # Skip introductory fluff before the first section
+        # Content started guard: Skip introductory fluff
         if not content_started:
             if current_header_id == "1":
                 content_started = True
@@ -280,19 +281,19 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
                 i += 1
                 continue
 
-        # Handle Main Section Logic
+        # Handle Section Switches (Enforcing Single Rendering)
         if current_header_id:
-            # Enforce TOC on Page 2 and Overview on Page 3
+            # Enforce Page breaks for TOC (Page 2) and Overview (Page 3)
             if in_toc_section and current_header_id == "2":
                 in_toc_section = False
-                doc.add_page_break() # TOC isolated
+                doc.add_page_break()
             
-            # Prevent Double Printing of headers (common in AI outputs)
+            # Render header exactly once
             if not rendered_sections[current_header_id]:
                 doc.add_heading(clean_text, level=1)
                 rendered_sections[current_header_id] = True
                 
-                # Dynamic Content Injection based on Section ID
+                # Immediate content injection
                 if current_header_id == "1": in_toc_section = True
                 if current_header_id == "4":
                     diagram_path = SOW_DIAGRAM_MAP.get(sow_type_name)
@@ -309,7 +310,7 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
 
         # ---------------- TABLE PARSING ----------------
         if line.startswith('|') and i + 1 < len(lines) and lines[i+1].strip().startswith('|'):
-            # Skip redundant Markdown tables belonging to Section 5 injection area
+            # Filter out redundant tables generated for Section 5
             if rendered_sections["5"] and not rendered_sections["6"]:
                  i += 1
                  continue
@@ -345,7 +346,7 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
         
         # ---------------- NORMAL TEXT ----------------
         else:
-            # Filter out redundant architectural commentary that mentions "Architecture Diagram"
+            # Skip architectural descriptions that AI adds which repeat diagram info
             if "ARCHITECTURE DIAGRAM" in upper_text and rendered_sections["4"] and not rendered_sections["5"]:
                 i += 1
                 continue
@@ -363,6 +364,25 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
     bio = io.BytesIO()
     doc.save(bio)
     return bio.getvalue()
+
+# API CALL WRAPPER WITH RETRY LOGIC (Exponential Backoff)
+def call_gemini_with_retry(api_key, payload):
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={api_key}"
+    retries = 5
+    for attempt in range(retries):
+        try:
+            res = requests.post(url, json=payload)
+            if res.status_code == 200:
+                return res, None
+            # If 503 (Overloaded) or other transient errors, wait and retry
+            if res.status_code in [503, 429]:
+                time.sleep(2**attempt)
+                continue
+            else:
+                return None, f"API Error {res.status_code}: {res.text}"
+        except Exception as e:
+            time.sleep(2**attempt)
+    return None, "The model is currently overloaded after multiple retries. Please try again in a few moments."
 
 # --- INITIALIZATION ---
 if 'generated_sow' not in st.session_state:
@@ -439,12 +459,10 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
     elif not objective:
         st.error("⚠️ Business Objective is required.")
     else:
-        import requests
         with st.spinner(f"Architecting {selected_sow_name}..."):
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={api_key}"
             def get_md(df): return df.to_markdown(index=False)
             
-            # Dynamic Table Construction for AI Prompting
+            # Dynamic Table Context
             cost_info = SOW_COST_TABLE_MAP.get(selected_sow_name, {})
             dynamic_table_prompt = "| System | Infra Cost / month | AWS Calculator Cost |\n| --- | --- | --- |\n"
             if "poc_cost" in cost_info:
@@ -459,7 +477,7 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             prompt_text = f"""
             Generate a COMPLETE formal enterprise SOW for {selected_sow_name} in {final_industry}.
             
-            STRICT SECTION FLOW (NO REPETITION):
+            STRICT SECTION FLOW (OUTPUT EACH SECTION ONCE, NO REPETITION):
             1 TABLE OF CONTENTS
             2 PROJECT OVERVIEW
               2.1 OBJECTIVE: {objective}
@@ -473,7 +491,7 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
                   ### Project Escalation Contacts
                   {get_md(st.session_state.stakeholders["Escalation"])}
               2.3 ASSUMPTIONS & DEPENDENCIES
-                  - Include subheadings 'Assumptions' and 'Dependencies', each with 2-5 distinct bullet points.
+                  - Provide subheadings 'Assumptions' and 'Dependencies', each with 2-5 distinct bullet points.
               2.4 Project Success Criteria
             3 SCOPE OF WORK - TECHNICAL PROJECT PLAN
             4 SOLUTION ARCHITECTURE / ARCHITECTURAL DIAGRAM
@@ -482,22 +500,23 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
 
             RULES:
             - Section 4 must include ONLY: "Specifics to be discussed basis POC".
-            - Section 5 must include ONLY this table:
+            - Section 5 must include ONLY:
             {dynamic_table_prompt}
-            - Main headings (1-6) must appear exactly once.
-            - Start immediately with '1 TABLE OF CONTENTS'. No markdown bolding (**).
+            - Ensure headings (1-6) appear exactly once.
+            - Start immediately with '1 TABLE OF CONTENTS'. No markdown bolding (**). No introductory fluff.
             """
+            
             payload = {
                 "contents": [{"parts": [{"text": prompt_text}]}],
-                "systemInstruction": {"parts": [{"text": "You are a senior Solutions Architect. Strictly follow numbering and flow. Page 1 is cover, Page 2 is TOC only, Page 3 starts Overview. No markdown bolding. No introductory text."}]}
+                "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering exactly. Page 1 cover, Page 2 TOC, Page 3 starts Overview. No repetitions. No introductory fluff."}]}
             }
-            try:
-                res = requests.post(url, json=payload)
-                if res.status_code == 200:
-                    st.session_state.generated_sow = res.json()['candidates'][0]['content']['parts'][0]['text']
-                    st.balloons()
-                else: st.error(f"API Error: {res.text}")
-            except Exception as e: st.error(f"Error: {str(e)}")
+            
+            res, error = call_gemini_with_retry(api_key, payload)
+            if res:
+                st.session_state.generated_sow = res.json()['candidates'][0]['content']['parts'][0]['text']
+                st.balloons()
+            else:
+                st.error(error)
 
 # --- STEP 3: REVIEW & EXPORT ---
 if st.session_state.generated_sow:
@@ -508,7 +527,7 @@ if st.session_state.generated_sow:
         st.session_state.generated_sow = st.text_area(label="Modify content:", value=st.session_state.generated_sow, height=700, key="sow_editor")
     with tab_preview:
         st.markdown(f'<div class="sow-preview">', unsafe_allow_html=True)
-        # Visual Hyperlink Replacement in Streamlit Preview
+        # Handle links in preview
         calc_url_p = CALCULATOR_LINKS.get(selected_sow_name, "https://calculator.aws")
         if selected_sow_name == "Beauty Advisor POC SOW" and "Production Development" in st.session_state.generated_sow:
             calc_url_p = CALCULATOR_LINKS["Beauty Advisor Production"]
