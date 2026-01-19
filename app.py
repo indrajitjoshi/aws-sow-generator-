@@ -258,33 +258,35 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
         # ---------------- SECTION 2: PROJECT OVERVIEW (PAGE 3) ----------------
         if not overview_started and "2 PROJECT OVERVIEW" in upper_text:
             in_toc_section = False
-            doc.add_page_break() # TOC on its own page
+            doc.add_page_break() # End TOC page
             doc.add_heading(clean_text, level=1)
             overview_started = True
             i += 1
             continue
 
         # ---------------- SECTION 4: ARCHITECTURE ----------------
-        if "4 SOLUTION ARCHITECTURE" in upper_text:
-            doc.add_heading(clean_text, level=1)
-            diagram_path = SOW_DIAGRAM_MAP.get(sow_type_name)
-            if diagram_path and os.path.exists(diagram_path):
-                doc.add_paragraph("")
-                doc.add_picture(diagram_path, width=Inches(6.0))
-                cap = doc.add_paragraph(f"{sow_type_name} – Architecture Diagram")
-                cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            i += 1
-            continue
+        if not in_toc_section and "4 SOLUTION ARCHITECTURE" in upper_text:
+            if not architecture_rendered:
+                architecture_rendered = True
+                doc.add_heading(clean_text, level=1)
+                diagram_path = SOW_DIAGRAM_MAP.get(sow_type_name)
+                if diagram_path and os.path.exists(diagram_path):
+                    doc.add_paragraph("")
+                    doc.add_picture(diagram_path, width=Inches(6.0))
+                    cap = doc.add_paragraph(f"{sow_type_name} – Architecture Diagram")
+                    cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                i += 1
+                continue
 
         # ---------------- SECTION 5: COST TABLE ----------------
-        if not cost_table_rendered and "5 COST ESTIMATION TABLE" in upper_text:
+        if not in_toc_section and not cost_table_rendered and "5 COST ESTIMATION TABLE" in upper_text:
             cost_table_rendered = True
             doc.add_heading(clean_text, level=1)
             add_infra_cost_table(doc, sow_type_name, text_content)
             i += 1
             continue
 
-        # ---------------- TABLE PARSING ----------------
+        # ---------------- TABLE PARSING (General) ----------------
         if line.startswith('|') and i + 1 < len(lines) and lines[i+1].strip().startswith('|'):
             table_lines = []
             while i < len(lines) and lines[i].strip().startswith('|'):
@@ -320,7 +322,11 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
         # ---------------- NORMAL TEXT ----------------
         else:
             p = doc.add_paragraph(clean_text)
-            segregation_keywords = ["PARTNER EXECUTIVE SPONSOR", "CUSTOMER EXECUTIVE SPONSOR", "AWS EXECUTIVE SPONSOR", "PROJECT ESCALATION CONTACTS", "ASSUMPTIONS", "DEPENDENCIES"]
+            segregation_keywords = [
+                "PARTNER EXECUTIVE SPONSOR", "CUSTOMER EXECUTIVE SPONSOR", 
+                "AWS EXECUTIVE SPONSOR", "PROJECT ESCALATION CONTACTS", 
+                "ASSUMPTIONS", "DEPENDENCIES"
+            ]
             if any(k in upper_text for k in segregation_keywords):
                 if p.runs: p.runs[0].bold = True
         i += 1
@@ -411,22 +417,22 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             prompt_text = f"""
             Generate a COMPLETE formal enterprise SOW for {selected_sow_name} in {final_industry}.
             
-            STRICT PAGE & SECTION FLOW (RETAIN THIS EXACT ORDER FOR ALL CASES):
+            STRICT PAGE & SECTION FLOW (DO NOT DISTURB THIS ORDER):
             1 TABLE OF CONTENTS
             2 PROJECT OVERVIEW
               2.1 OBJECTIVE: {objective}
               2.2 PROJECT TEAM:
-                  You MUST display these four sub-headings clearly:
-                  Partner Executive Sponsor
+                  ### Partner Executive Sponsor
                   {get_md(st.session_state.stakeholders["Partner"])}
-                  Customer Executive Sponsor
+                  ### Customer Executive Sponsor
                   {get_md(st.session_state.stakeholders["Customer"])}
-                  AWS Executive Sponsor
+                  ### AWS Executive Sponsor
                   {get_md(st.session_state.stakeholders["AWS"])}
-                  Project Escalation Contacts
+                  ### Project Escalation Contacts
                   {get_md(st.session_state.stakeholders["Escalation"])}
               2.3 ASSUMPTIONS & DEPENDENCIES
-                  - Include separate bullet points for "Assumptions" (2-5 points) and "Dependencies" (2-5 points).
+                  - Include a subheading 'Assumptions' with 2-5 distinct bullet points.
+                  - Include a subheading 'Dependencies' with 2-5 distinct bullet points.
               2.4 Project Success Criteria
             3 SCOPE OF WORK - TECHNICAL PROJECT PLAN
             4 SOLUTION ARCHITECTURE / ARCHITECTURAL DIAGRAM
@@ -437,10 +443,11 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             - Section 4 must include: "Specifics to be discussed basis POC".
             - Section 5 must include exactly: "Placeholder for Cost Table".
             - NO markdown bolding marks (**). Output: Markdown only.
+            - Ensure Section 2.2 uses the 4 specific subheadings provided.
             """
             payload = {
                 "contents": [{"parts": [{"text": prompt_text}]}],
-                "systemInstruction": {"parts": [{"text": "You are a senior Solutions Architect. Strictly follow numbering and flow. No markdown bolding. Ensure Section 5 'COST ESTIMATION TABLE' is present in every output regardless of the project type."}]}
+                "systemInstruction": {"parts": [{"text": "You are a senior Solutions Architect. Strictly follow the numbering and flow. Page 1 is cover, Page 2 is TOC only, Page 3 starts the Overview. No markdown bolding."}]}
             }
             try:
                 res = requests.post(url, json=payload)
@@ -460,7 +467,7 @@ if st.session_state.generated_sow:
     with tab_preview:
         st.markdown(f'<div class="sow-preview">', unsafe_allow_html=True)
         
-        # Prepare content for visual preview (handling links and diagram)
+        # Prepare content for visual preview
         calc_url_p = CALCULATOR_LINKS.get(selected_sow_name, "https://calculator.aws")
         if selected_sow_name == "Beauty Advisor POC SOW" and "Production Development" in st.session_state.generated_sow:
             calc_url_p = CALCULATOR_LINKS["Beauty Advisor Production"]
