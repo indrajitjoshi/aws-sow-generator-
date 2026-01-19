@@ -249,7 +249,6 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
         upper_text = clean_text.upper()
 
         # Handle header detection
-        # Logic: If it starts with a number followed by a name we expect, treat as section trigger
         header_patterns = {
             "1": "1 TABLE OF CONTENTS",
             "2": "2 PROJECT OVERVIEW",
@@ -265,7 +264,7 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
                 current_header_found = sec_id
                 break
 
-        # Filter out AI fillers
+        # Filter out AI fillers and trigger text
         if "PLACEHOLDER FOR COST TABLE" in upper_text or "SPECIFICS TO BE DISCUSSED BASIS POC" in upper_text:
             i += 1
             continue
@@ -280,18 +279,14 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
 
         # Handle Section Switches
         if current_header_found:
-            # Prevent double-printing headers (once from TOC text, once from actual section)
-            # If we are in TOC, we only care about rendering Section 1
             if in_toc_section and current_header_found == "2":
                 in_toc_section = False
                 doc.add_page_break() # TOC isolated on Page 2
             
-            # Only render header if not already done
             if not rendered_sections[current_header_found]:
                 doc.add_heading(clean_text, level=1)
                 rendered_sections[current_header_found] = True
                 
-                # Special cases for injection
                 if current_header_found == "1": in_toc_section = True
                 if current_header_found == "4":
                     diagram_path = SOW_DIAGRAM_MAP.get(sow_type_name)
@@ -308,6 +303,11 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
 
         # ---------------- TABLE PARSING ----------------
         if line.startswith('|') and i + 1 < len(lines) and lines[i+1].strip().startswith('|'):
+            # Skip Markdown tables belonging to Section 5 as they are handled by add_infra_cost_table
+            if rendered_sections["5"] and not rendered_sections["6"]:
+                 i += 1
+                 continue
+
             table_lines = []
             while i < len(lines) and lines[i].strip().startswith('|'):
                 table_lines.append(lines[i])
@@ -339,6 +339,10 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
         
         # ---------------- NORMAL TEXT ----------------
         else:
+            if "ARCHITECTURE DIAGRAM" in upper_text and rendered_sections["4"] and not rendered_sections["5"]:
+                i += 1
+                continue
+            
             p = doc.add_paragraph(clean_text)
             bold_keywords = [
                 "PARTNER EXECUTIVE SPONSOR", "CUSTOMER EXECUTIVE SPONSOR", 
@@ -432,10 +436,23 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
         with st.spinner(f"Architecting {selected_sow_name}..."):
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={api_key}"
             def get_md(df): return df.to_markdown(index=False)
+            
+            # Dynamic Cost Table Context for AI
+            cost_info = SOW_COST_TABLE_MAP.get(selected_sow_name, {})
+            dynamic_table_prompt = "| System | Infra Cost / month | AWS Calculator Cost |\n| --- | --- | --- |\n"
+            if "poc_cost" in cost_info:
+                dynamic_table_prompt += f"| POC | {cost_info['poc_cost']} | Estimate |\n"
+            if "prod_cost" in cost_info:
+                dynamic_table_prompt += f"| Production | {cost_info['prod_cost']} | Estimate |\n"
+            if "amazon_bedrock" in cost_info:
+                dynamic_table_prompt += f"| Amazon Bedrock | {cost_info['amazon_bedrock']} | Estimate |\n"
+            if "total" in cost_info:
+                dynamic_table_prompt += f"| Total | {cost_info['total']} | Estimate |\n"
+
             prompt_text = f"""
             Generate a COMPLETE formal enterprise SOW for {selected_sow_name} in {final_industry}.
             
-            STRICT SECTION FLOW (OUTPUT EACH SECTION ONCE, NO REPETITION):
+            STRICT SECTION FLOW:
             1 TABLE OF CONTENTS
             2 PROJECT OVERVIEW
               2.1 OBJECTIVE: {objective}
@@ -449,7 +466,7 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
                   ### Project Escalation Contacts
                   {get_md(st.session_state.stakeholders["Escalation"])}
               2.3 ASSUMPTIONS & DEPENDENCIES
-                  - Include subheadings 'Assumptions' and 'Dependencies', each with 2-5 bullet points.
+                  - Include subheadings 'Assumptions' and 'Dependencies', each with 2-5 distinct bullet points.
               2.4 Project Success Criteria
             3 SCOPE OF WORK - TECHNICAL PROJECT PLAN
             4 SOLUTION ARCHITECTURE / ARCHITECTURAL DIAGRAM
@@ -458,13 +475,14 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
 
             RULES:
             - Section 4 must include ONLY: "Specifics to be discussed basis POC".
-            - Section 5 must include ONLY: "Placeholder for Cost Table".
+            - Section 5 must include ONLY this table:
+            {dynamic_table_prompt}
             - Ensure main headings (1-6) start with the number and name exactly once.
             - Start immediately with '1 TABLE OF CONTENTS'. No markdown bolding (**).
             """
             payload = {
                 "contents": [{"parts": [{"text": prompt_text}]}],
-                "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering exactly. Page 1 is cover, Page 2 is TOC, Page 3 starts Overview. Do not repeat sections or headings."}]}
+                "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering exactly. Page 1 is cover, Page 2 is TOC, Page 3 starts Overview. No repetitions."}]}
             }
             try:
                 res = requests.post(url, json=payload)
