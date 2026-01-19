@@ -121,7 +121,7 @@ def add_hyperlink(paragraph, text, url):
     paragraph._p.append(hyperlink)
     return hyperlink
 
-# WORD – COST TABLE
+# WORD – COST TABLE (Section 5)
 def add_infra_cost_table(doc, sow_type_name, text_content):
     from docx.enum.text import WD_ALIGN_PARAGRAPH
 
@@ -129,7 +129,7 @@ def add_infra_cost_table(doc, sow_type_name, text_content):
     if not cost_data:
         return
 
-    # Determine calculator link
+    # Determine individual calculator link
     calc_url = CALCULATOR_LINKS.get(sow_type_name, "https://calculator.aws/#/")
     if sow_type_name == "Beauty Advisor POC SOW" and "Production Development" in text_content:
         calc_url = CALCULATOR_LINKS["Beauty Advisor Production"]
@@ -155,6 +155,7 @@ def add_infra_cost_table(doc, sow_type_name, text_content):
         r = table.add_row().cells
         r[0].text = label
         r[1].text = cost
+        # Inject hyperlinked "Estimate"
         p = r[2].paragraphs[0]
         add_hyperlink(p, "Estimate", calc_url)
 
@@ -171,7 +172,7 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
 
     doc = Document()
     
-    # Track rendered sections to prevent duplicates
+    # Tracking to ensure rigid flow and no repetitions
     rendered_sections = {
         "1": False, "2": False, "3": False, 
         "4": False, "5": False, "6": False
@@ -237,6 +238,16 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
     in_toc_section = False
     content_started = False
 
+    # Define Header Rigid Flow
+    header_patterns = {
+        "1": "1 TABLE OF CONTENTS",
+        "2": "2 PROJECT OVERVIEW",
+        "3": "3 SCOPE OF WORK",
+        "4": "4 SOLUTION ARCHITECTURE",
+        "5": "5 COST ESTIMATION TABLE",
+        "6": "6 RESOURCES & COST ESTIMATES"
+    }
+
     while i < len(lines):
         line = lines[i].strip()
         if not line:
@@ -248,54 +259,49 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
         clean_text = re.sub(r'^#+\s*', '', line_clean).strip()
         upper_text = clean_text.upper()
 
-        # Handle header detection
-        header_patterns = {
-            "1": "1 TABLE OF CONTENTS",
-            "2": "2 PROJECT OVERVIEW",
-            "3": "3 SCOPE OF WORK",
-            "4": "4 SOLUTION ARCHITECTURE",
-            "5": "5 COST ESTIMATION TABLE",
-            "6": "6 RESOURCES & COST ESTIMATES"
-        }
-
-        current_header_found = None
-        for sec_id, pattern in header_patterns.items():
+        # Check if line matches a main section trigger
+        current_header_id = None
+        for h_id, pattern in header_patterns.items():
             if upper_text.startswith(pattern):
-                current_header_found = sec_id
+                current_header_id = h_id
                 break
 
-        # Filter out AI fillers and trigger text
-        if "PLACEHOLDER FOR COST TABLE" in upper_text or "SPECIFICS TO BE DISCUSSED BASIS POC" in upper_text:
+        # Remove unnecessary commentary, triggers, and AI filler
+        irrelevant_keywords = ["PLACEHOLDER FOR COST TABLE", "SPECIFICS TO BE DISCUSSED BASIS POC"]
+        if any(kw in upper_text for kw in irrelevant_keywords):
             i += 1
             continue
 
-        # Content started guard: Skip introductory fluff
+        # Skip introductory fluff before the first section
         if not content_started:
-            if current_header_found == "1":
+            if current_header_id == "1":
                 content_started = True
             else:
                 i += 1
                 continue
 
-        # Handle Section Switches
-        if current_header_found:
-            if in_toc_section and current_header_found == "2":
+        # Handle Main Section Logic
+        if current_header_id:
+            # Enforce TOC on Page 2 and Overview on Page 3
+            if in_toc_section and current_header_id == "2":
                 in_toc_section = False
-                doc.add_page_break() # TOC isolated on Page 2
+                doc.add_page_break() # TOC isolated
             
-            if not rendered_sections[current_header_found]:
+            # Prevent Double Printing of headers (common in AI outputs)
+            if not rendered_sections[current_header_id]:
                 doc.add_heading(clean_text, level=1)
-                rendered_sections[current_header_found] = True
+                rendered_sections[current_header_id] = True
                 
-                if current_header_found == "1": in_toc_section = True
-                if current_header_found == "4":
+                # Dynamic Content Injection based on Section ID
+                if current_header_id == "1": in_toc_section = True
+                if current_header_id == "4":
                     diagram_path = SOW_DIAGRAM_MAP.get(sow_type_name)
                     if diagram_path and os.path.exists(diagram_path):
                         doc.add_paragraph("")
                         doc.add_picture(diagram_path, width=Inches(6.0))
                         cap = doc.add_paragraph(f"{sow_type_name} – Architecture Diagram")
                         cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                if current_header_found == "5":
+                if current_header_id == "5":
                     add_infra_cost_table(doc, sow_type_name, text_content)
             
             i += 1
@@ -303,7 +309,7 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
 
         # ---------------- TABLE PARSING ----------------
         if line.startswith('|') and i + 1 < len(lines) and lines[i+1].strip().startswith('|'):
-            # Skip Markdown tables belonging to Section 5 as they are handled by add_infra_cost_table
+            # Skip redundant Markdown tables belonging to Section 5 injection area
             if rendered_sections["5"] and not rendered_sections["6"]:
                  i += 1
                  continue
@@ -339,6 +345,7 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
         
         # ---------------- NORMAL TEXT ----------------
         else:
+            # Filter out redundant architectural commentary that mentions "Architecture Diagram"
             if "ARCHITECTURE DIAGRAM" in upper_text and rendered_sections["4"] and not rendered_sections["5"]:
                 i += 1
                 continue
@@ -437,7 +444,7 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={api_key}"
             def get_md(df): return df.to_markdown(index=False)
             
-            # Dynamic Cost Table Context for AI
+            # Dynamic Table Construction for AI Prompting
             cost_info = SOW_COST_TABLE_MAP.get(selected_sow_name, {})
             dynamic_table_prompt = "| System | Infra Cost / month | AWS Calculator Cost |\n| --- | --- | --- |\n"
             if "poc_cost" in cost_info:
@@ -452,7 +459,7 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             prompt_text = f"""
             Generate a COMPLETE formal enterprise SOW for {selected_sow_name} in {final_industry}.
             
-            STRICT SECTION FLOW:
+            STRICT SECTION FLOW (NO REPETITION):
             1 TABLE OF CONTENTS
             2 PROJECT OVERVIEW
               2.1 OBJECTIVE: {objective}
@@ -477,12 +484,12 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             - Section 4 must include ONLY: "Specifics to be discussed basis POC".
             - Section 5 must include ONLY this table:
             {dynamic_table_prompt}
-            - Ensure main headings (1-6) start with the number and name exactly once.
+            - Main headings (1-6) must appear exactly once.
             - Start immediately with '1 TABLE OF CONTENTS'. No markdown bolding (**).
             """
             payload = {
                 "contents": [{"parts": [{"text": prompt_text}]}],
-                "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering exactly. Page 1 is cover, Page 2 is TOC, Page 3 starts Overview. No repetitions."}]}
+                "systemInstruction": {"parts": [{"text": "You are a senior Solutions Architect. Strictly follow numbering and flow. Page 1 is cover, Page 2 is TOC only, Page 3 starts Overview. No markdown bolding. No introductory text."}]}
             }
             try:
                 res = requests.post(url, json=payload)
@@ -501,10 +508,12 @@ if st.session_state.generated_sow:
         st.session_state.generated_sow = st.text_area(label="Modify content:", value=st.session_state.generated_sow, height=700, key="sow_editor")
     with tab_preview:
         st.markdown(f'<div class="sow-preview">', unsafe_allow_html=True)
+        # Visual Hyperlink Replacement in Streamlit Preview
         calc_url_p = CALCULATOR_LINKS.get(selected_sow_name, "https://calculator.aws")
         if selected_sow_name == "Beauty Advisor POC SOW" and "Production Development" in st.session_state.generated_sow:
             calc_url_p = CALCULATOR_LINKS["Beauty Advisor Production"]
         preview_content = st.session_state.generated_sow.replace("Estimate", f'<a href="{calc_url_p}" target="_blank" style="color:#3b82f6; text-decoration: underline;">Estimate</a>')
+        
         header_pattern = r'(?i)(^#*\s*4\s+SOLUTION ARCHITECTURE.*)'
         match = re.search(header_pattern, preview_content, re.MULTILINE)
         if match:
