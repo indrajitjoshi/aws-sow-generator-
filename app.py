@@ -155,7 +155,6 @@ def add_infra_cost_table(doc, sow_type_name, text_content):
         r = table.add_row().cells
         r[0].text = label
         r[1].text = cost
-        # Add hyperlinked "Estimate"
         p = r[2].paragraphs[0]
         add_hyperlink(p, "Estimate", calc_url)
 
@@ -172,7 +171,7 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
 
     doc = Document()
     
-    # State tracking to prevent duplicates
+    # Track rendered sections to prevent duplicates
     rendered_sections = {
         "1": False, "2": False, "3": False, 
         "4": False, "5": False, "6": False
@@ -249,72 +248,61 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
         clean_text = re.sub(r'^#+\s*', '', line_clean).strip()
         upper_text = clean_text.upper()
 
-        # Check for main headings
-        main_match = re.match(r'^#?\s*([1-6])(\s|\.|$)', clean_text)
-        is_main_heading = main_match is not None
-        section_num = main_match.group(1) if is_main_heading else None
+        # Handle header detection
+        # Logic: If it starts with a number followed by a name we expect, treat as section trigger
+        header_patterns = {
+            "1": "1 TABLE OF CONTENTS",
+            "2": "2 PROJECT OVERVIEW",
+            "3": "3 SCOPE OF WORK",
+            "4": "4 SOLUTION ARCHITECTURE",
+            "5": "5 COST ESTIMATION TABLE",
+            "6": "6 RESOURCES & COST ESTIMATES"
+        }
 
-        # Ignore irrelevant trigger text and placeholders
-        if "PLACEHOLDER FOR COST TABLE" in upper_text:
+        current_header_found = None
+        for sec_id, pattern in header_patterns.items():
+            if upper_text.startswith(pattern):
+                current_header_found = sec_id
+                break
+
+        # Filter out AI fillers
+        if "PLACEHOLDER FOR COST TABLE" in upper_text or "SPECIFICS TO BE DISCUSSED BASIS POC" in upper_text:
             i += 1
             continue
 
-        # ---------------- CONTENT START GUARD ----------------
+        # Content started guard: Skip introductory fluff
         if not content_started:
-            if is_main_heading and section_num == "1":
+            if current_header_found == "1":
                 content_started = True
             else:
-                # Skip conversational commentary or introductory titles before the TOC
                 i += 1
                 continue
 
-        # ---------------- SECTION 1: TOC (PAGE 2) ----------------
-        if is_main_heading and section_num == "1":
-            if not rendered_sections["1"]:
-                doc.add_heading("1 TABLE OF CONTENTS", level=1)
-                rendered_sections["1"] = True
-                in_toc_section = True
-            i += 1
-            continue
-
-        # ---------------- SECTION 2: PROJECT OVERVIEW (PAGE 3) ----------------
-        if is_main_heading and section_num == "2":
-            if not rendered_sections["2"]:
+        # Handle Section Switches
+        if current_header_found:
+            # Prevent double-printing headers (once from TOC text, once from actual section)
+            # If we are in TOC, we only care about rendering Section 1
+            if in_toc_section and current_header_found == "2":
                 in_toc_section = False
                 doc.add_page_break() # TOC isolated on Page 2
-                doc.add_heading("2 PROJECT OVERVIEW", level=1)
-                rendered_sections["2"] = True
-            i += 1
-            continue
-
-        # ---------------- SECTION 4: ARCHITECTURE ----------------
-        if is_main_heading and section_num == "4":
-            if not rendered_sections["4"]:
-                doc.add_heading(clean_text, level=1)
-                rendered_sections["4"] = True
-                diagram_path = SOW_DIAGRAM_MAP.get(sow_type_name)
-                if diagram_path and os.path.exists(diagram_path):
-                    doc.add_paragraph("")
-                    doc.add_picture(diagram_path, width=Inches(6.0))
-                    cap = doc.add_paragraph(f"{sow_type_name} – Architecture Diagram")
-                    cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            i += 1
-            continue
-
-        # ---------------- SECTION 5: COST TABLE ----------------
-        if is_main_heading and section_num == "5":
-            if not rendered_sections["5"]:
-                doc.add_heading("5 COST ESTIMATION TABLE", level=1)
-                rendered_sections["5"] = True
-                add_infra_cost_table(doc, sow_type_name, text_content)
-            i += 1
-            continue
             
-        # ---------------- SECTION 3 & 6 ----------------
-        if is_main_heading and section_num in ["3", "6"]:
-            if not rendered_sections[section_num]:
+            # Only render header if not already done
+            if not rendered_sections[current_header_found]:
                 doc.add_heading(clean_text, level=1)
-                rendered_sections[section_num] = True
+                rendered_sections[current_header_found] = True
+                
+                # Special cases for injection
+                if current_header_found == "1": in_toc_section = True
+                if current_header_found == "4":
+                    diagram_path = SOW_DIAGRAM_MAP.get(sow_type_name)
+                    if diagram_path and os.path.exists(diagram_path):
+                        doc.add_paragraph("")
+                        doc.add_picture(diagram_path, width=Inches(6.0))
+                        cap = doc.add_paragraph(f"{sow_type_name} – Architecture Diagram")
+                        cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                if current_header_found == "5":
+                    add_infra_cost_table(doc, sow_type_name, text_content)
+            
             i += 1
             continue
 
@@ -346,16 +334,11 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
         
         # ---------------- BULLETS ----------------
         elif line.startswith('- ') or line.startswith('* '):
-            p = doc.add_paragraph(clean_text[2:] if clean_text.startswith('- ') or clean_text.startswith('* ') else clean_text, style="List Bullet")
+            p = doc.add_paragraph(clean_text[2:] if (clean_text.startswith('- ') or clean_text.startswith('* ')) else clean_text, style="List Bullet")
             if in_toc_section: p.paragraph_format.left_indent = Inches(0.4)
         
         # ---------------- NORMAL TEXT ----------------
         else:
-            # Skip architectural diagram descriptions generated by the AI to avoid redundant captions
-            if "ARCHITECTURE DIAGRAM" in upper_text and rendered_sections["4"]:
-                i += 1
-                continue
-            
             p = doc.add_paragraph(clean_text)
             bold_keywords = [
                 "PARTNER EXECUTIVE SPONSOR", "CUSTOMER EXECUTIVE SPONSOR", 
@@ -466,8 +449,7 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
                   ### Project Escalation Contacts
                   {get_md(st.session_state.stakeholders["Escalation"])}
               2.3 ASSUMPTIONS & DEPENDENCIES
-                  - Provide a heading 'Assumptions' with 2-5 distinct bullet points.
-                  - Provide a heading 'Dependencies' with 2-5 distinct bullet points.
+                  - Include subheadings 'Assumptions' and 'Dependencies', each with 2-5 bullet points.
               2.4 Project Success Criteria
             3 SCOPE OF WORK - TECHNICAL PROJECT PLAN
             4 SOLUTION ARCHITECTURE / ARCHITECTURAL DIAGRAM
@@ -475,15 +457,14 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             6 RESOURCES & COST ESTIMATES
 
             RULES:
-            - Section 4 must include: "Specifics to be discussed basis POC".
-            - Section 5 must include exactly: "Placeholder for Cost Table".
-            - NO markdown bolding marks (**). Output: Markdown only.
+            - Section 4 must include ONLY: "Specifics to be discussed basis POC".
+            - Section 5 must include ONLY: "Placeholder for Cost Table".
             - Ensure main headings (1-6) start with the number and name exactly once.
-            - DO NOT add introductory sentences like "Here is the SOW" or titles before the TOC.
+            - Start immediately with '1 TABLE OF CONTENTS'. No markdown bolding (**).
             """
             payload = {
                 "contents": [{"parts": [{"text": prompt_text}]}],
-                "systemInstruction": {"parts": [{"text": "You are a senior Solutions Architect. Strictly follow numbering and flow. Page 1 is cover, Page 2 is TOC only, Page 3 starts the Overview. No markdown bolding. No introductory fluff."}]}
+                "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering exactly. Page 1 is cover, Page 2 is TOC, Page 3 starts Overview. Do not repeat sections or headings."}]}
             }
             try:
                 res = requests.post(url, json=payload)
@@ -502,15 +483,10 @@ if st.session_state.generated_sow:
         st.session_state.generated_sow = st.text_area(label="Modify content:", value=st.session_state.generated_sow, height=700, key="sow_editor")
     with tab_preview:
         st.markdown(f'<div class="sow-preview">', unsafe_allow_html=True)
-        
-        # Prepare content for visual preview
         calc_url_p = CALCULATOR_LINKS.get(selected_sow_name, "https://calculator.aws")
         if selected_sow_name == "Beauty Advisor POC SOW" and "Production Development" in st.session_state.generated_sow:
             calc_url_p = CALCULATOR_LINKS["Beauty Advisor Production"]
-            
         preview_content = st.session_state.generated_sow.replace("Estimate", f'<a href="{calc_url_p}" target="_blank" style="color:#3b82f6; text-decoration: underline;">Estimate</a>')
-
-        # Visual diagram logic
         header_pattern = r'(?i)(^#*\s*4\s+SOLUTION ARCHITECTURE.*)'
         match = re.search(header_pattern, preview_content, re.MULTILINE)
         if match:
