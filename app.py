@@ -3,7 +3,7 @@ from datetime import date
 import io
 import re
 import os
-import time
+import time 
 import requests
 
 # --- FILE PATHING & DIAGRAM MAPPING ---
@@ -123,6 +123,40 @@ def add_hyperlink(paragraph, text, url):
     paragraph._p.append(hyperlink)
     return hyperlink
 
+def add_poc_calculation_table(doc):
+    doc.add_paragraph("The above numbers are calculated basis the following:")
+
+    table = doc.add_table(rows=1, cols=3)
+    table.style = "Table Grid"
+
+    hdr = table.rows[0].cells
+    hdr[0].text = "Particulars"
+    hdr[1].text = "Value (in Dollar)"
+    hdr[2].text = "Remarks"
+
+    data = [
+        ("Number of documents", "200", "Assuming 5 interactions for finalising each product copy"),
+        ("Input Tokens per document", "10,00,000", ""),
+        ("Input Token Cost per 1,00,000 Tokens", "0", "Anthropic Claude 3 Sonnet Model"),
+        ("Total Input Cost in USD", "600", ""),
+        ("Output Tokens per document", "50,000", ""),
+        ("Output Token Cost per 1,00,000 Tokens", "0", "Anthropic Claude 3 Sonnet Model"),
+        ("Total Output Cost in USD", "150", ""),
+        ("Total Cost in USD", "750", ""),
+        ("", "", ""),
+        ("Tokens for Embedding Model", "2,50,00,00,000", ""),
+        ("Input Cost per 1,000 Tokens", "0", "Cohere English Model"),
+        ("Total Embedding Model Cost in USD", "250", ""),
+        ("", "", ""),
+        ("Total Cost in USD per month", "1,000", "")
+    ]
+
+    for row in data:
+        cells = table.add_row().cells
+        for i, val in enumerate(row):
+            cells[i].text = val
+
+
 # WORD – COST TABLE (Section 5)
 def add_infra_cost_table(doc, sow_type_name, text_content):
     from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -164,6 +198,12 @@ def add_infra_cost_table(doc, sow_type_name, text_content):
         for cell in row.cells:
             for p in cell.paragraphs:
                 p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        # ---- PoC Scope Document extra calculation table ----
+    if sow_type_name == "PoC Scope Document":
+        doc.add_paragraph("")  # spacing
+        add_poc_calculation_table(doc)
+
 
 # --- CACHED UTILITIES ---
 def create_docx_logic(text_content, branding_info, sow_type_name):
@@ -417,11 +457,18 @@ with st.sidebar:
     sow_type_options = list(SOW_COST_TABLE_MAP.keys())
     selected_sow_name = st.selectbox("1.1 Scope of Work Type", sow_type_options)
 
+    # --- NEW ENGAGEMENT TYPE DROPDOWN (1.2) ---
+    engagement_type = st.selectbox(
+        "1.2 Engagement Type (Closed-ended)", 
+        ["Proof of Concept (PoC)", "Pilot", "MVP", "Production Rollout", "Assessment / Discovery", "Support"]
+    )
+    # ------------------------------------------
+
     st.divider()
     industry_options = ["Retail / E-commerce", "BFSI", "Manufacturing", "Telecom", "Healthcare", "Energy / Utilities", "Logistics", "Media", "Government", "Other (specify)"]
-    industry_type = st.selectbox("1.2 Industry / Domain", industry_options)
+    industry_type = st.selectbox("1.3 Industry / Domain", industry_options)
     final_industry = st.text_input("Specify Industry", placeholder="Enter industry...") if industry_type == "Other (specify)" else industry_type
-    duration = st.text_input("Timeline / Duration", "4 Weeks")
+    duration = st.text_input("1.4 Timeline / Duration", "4 Weeks")
     
     if st.button("🗑️ Reset All Fields", on_click=clear_sow, use_container_width=True):
         st.rerun()
@@ -459,7 +506,7 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
     elif not objective:
         st.error("⚠️ Business Objective is required.")
     else:
-        with st.spinner(f"Architecting {selected_sow_name}..."):
+        with st.spinner(f"Architecting {selected_sow_name} ({engagement_type})..."):
             def get_md(df): return df.to_markdown(index=False)
             
             # Dynamic Table Context
@@ -475,7 +522,9 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
                 dynamic_table_prompt += f"| Total | {cost_info['total']} | Estimate |\n"
 
             prompt_text = f"""
-            Generate a COMPLETE formal enterprise SOW for {selected_sow_name} in {final_industry}.
+            Generate a COMPLETE formal enterprise SOW for {selected_sow_name} in the {final_industry} industry.
+            
+            ENGAGEMENT TYPE: {engagement_type}
             
             STRICT SECTION FLOW (OUTPUT EACH SECTION ONCE, NO REPETITION):
             1 TABLE OF CONTENTS
@@ -492,13 +541,17 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
                   {get_md(st.session_state.stakeholders["Escalation"])}
               2.3 ASSUMPTIONS & DEPENDENCIES
                   - Provide subheadings 'Assumptions' and 'Dependencies', each with 2-5 distinct bullet points.
-              2.4 Project Success Criteria
+              2.4 PROJECT SUCCESS CRITERIA
             3 SCOPE OF WORK - TECHNICAL PROJECT PLAN
             4 SOLUTION ARCHITECTURE / ARCHITECTURAL DIAGRAM
             5 COST ESTIMATION TABLE
             6 RESOURCES & COST ESTIMATES
 
             RULES:
+            - Because the engagement type is '{engagement_type}', this DRIVES the following:
+                * Depth of scope: Adjust technical detail level basis {engagement_type}.
+                * Success criteria strictness: Calibrate criteria for {engagement_type}.
+                * Cost modeling assumptions: Baseline assumptions on {engagement_type} parameters.
             - Section 4 must include ONLY: "Specifics to be discussed basis POC".
             - Section 5 must include ONLY:
             {dynamic_table_prompt}
@@ -508,7 +561,7 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             
             payload = {
                 "contents": [{"parts": [{"text": prompt_text}]}],
-                "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering exactly. Page 1 cover, Page 2 TOC, Page 3 starts Overview. No repetitions. No introductory fluff."}]}
+                "systemInstruction": {"parts": [{"text": f"Solutions Architect. Document type: {engagement_type}. Follow numbering exactly. Page 1 cover, Page 2 TOC, Page 3 starts Overview. No repetitions. No introductory fluff."}]}
             }
             
             res, error = call_gemini_with_retry(api_key, payload)
