@@ -189,8 +189,8 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     doc = Document()
     
-    # Render sections tracking (1-8)
-    rendered_sections = {str(i): False for i in range(1, 9)}
+    # Render sections tracking (1-9)
+    rendered_sections = {str(i): False for i in range(1, 10)}
     
     # --- PAGE 1: COVER PAGE ---
     p_top = doc.add_paragraph()
@@ -250,8 +250,9 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
         "4": "4 POC SUCCESS CRITERIA",
         "5": "5 SCOPE OF WORK – FUNCTIONAL CAPABILITIES",
         "6": "6 SOLUTION ARCHITECTURE", 
-        "7": "7 COST ESTIMATION TABLE", 
-        "8": "8 RESOURCES & COST ESTIMATES"
+        "7": "7 ARCHITECTURE & AWS SERVICES",
+        "8": "8 COST ESTIMATION TABLE", 
+        "9": "9 RESOURCES & COST ESTIMATES"
     }
     
     while i < len(lines):
@@ -290,7 +291,7 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
                 
                 if current_header_id == "1": in_toc_section = True
                 
-                # Architecture Diagram logic shifted to section 6
+                # Architecture Diagram logic
                 if current_header_id == "6":
                     diag = SOW_DIAGRAM_MAP.get(sow_type_name)
                     if diag and os.path.exists(diag):
@@ -298,15 +299,15 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
                         cap = doc.add_paragraph(f"{sow_type_name} – Architecture Diagram")
                         cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 
-                # Cost table logic shifted to section 7
-                if current_header_id == "7": 
+                # Cost table logic
+                if current_header_id == "8": 
                     add_infra_cost_table(doc, sow_type_name, text_content)
             i += 1; continue
             
         # Table Processing
         if line.startswith('|') and i + 1 < len(lines) and lines[i+1].strip().startswith('|'):
-            # Resources logic shifted to section 8
-            if rendered_sections["7"] and not rendered_sections["8"]: i += 1; continue
+            # Resources logic shifted to section 9
+            if rendered_sections["8"] and not rendered_sections["9"]: i += 1; continue
             table_lines = []
             while i < len(lines) and lines[i].strip().startswith('|'):
                 table_lines.append(lines[i]); i += 1
@@ -332,7 +333,7 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
             p = doc.add_paragraph(clean_text[2:] if (clean_text.startswith('- ') or clean_text.startswith('* ')) else clean_text, style="List Bullet")
             if in_toc_section: p.paragraph_format.left_indent = Inches(0.4)
         else:
-            if "ARCHITECTURE DIAGRAM" in upper_text and rendered_sections["6"] and not rendered_sections["7"]: i += 1; continue
+            if "ARCHITECTURE DIAGRAM" in upper_text and rendered_sections["6"] and not rendered_sections["8"]: i += 1; continue
             p = doc.add_paragraph(clean_text)
             bold_kw = ["PARTNER EXECUTIVE SPONSOR", "CUSTOMER EXECUTIVE SPONSOR", "AWS EXECUTIVE SPONSOR", "PROJECT ESCALATION CONTACTS", "ASSUMPTIONS:", "DEPENDENCIES:", "ASSUMPTIONS (", "DEPENDENCIES ("]
             if any(k in upper_text for k in bold_kw) and p.runs: p.runs[0].bold = True
@@ -502,6 +503,19 @@ st.subheader("🔗 5.2 Integrations Required")
 int_options = ["Internal databases", "External APIs", "CRM", "ERP", "Search engine", "Data warehouse", "None"]
 selected_ints = st.multiselect("Select systems to integrate:", int_options, default=["None"])
 
+st.divider()
+
+# --- 6. Architecture & AWS Services ---
+st.header("🏢 6. Architecture & AWS Services")
+st.subheader("🖥️ 6.1 Compute & Orchestration")
+compute_option = st.selectbox("Select primary compute (Default: Lambda + Step Functions):", ["AWS Lambda + Step Functions", "Amazon ECS / EKS", "Hybrid"], index=0)
+
+st.subheader("🤖 6.2 GenAI / ML Services")
+ml_services = st.multiselect("Select AI services:", ["Amazon Bedrock", "Amazon SageMaker", "Amazon Rekognition", "Amazon Textract", "Amazon Comprehend", "Amazon Transcribe", "Amazon Translate"], default=["Amazon Bedrock"])
+
+st.subheader("💾 6.3 Storage & Search")
+storage_services = st.multiselect("Select Storage & Search:", ["Amazon S3", "Amazon DynamoDB", "Amazon OpenSearch", "Amazon RDS", "Vector DB (OpenSearch)", "Vector DB (Aurora PG)"], default=["Amazon S3"])
+
 # --- GENERATION ---
 if st.button("✨ Generate SOW Document", type="primary", use_container_width=True):
     if not api_key: st.warning("⚠️ Enter Gemini API Key.")
@@ -556,17 +570,23 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
               Integrations: {', '.join(selected_ints)}
               - Convert these selected flows and integrations into a formal, structured Scope of Work section.
             6 SOLUTION ARCHITECTURE / ARCHITECTURAL DIAGRAM
-            7 COST ESTIMATION TABLE
-            8 RESOURCES & COST ESTIMATES
+            7 ARCHITECTURE & AWS SERVICES
+              Compute: {compute_option}
+              AI Services: {', '.join(ml_services)}
+              Storage & Search: {', '.join(storage_services)}
+              - Provide formal architectural descriptions for these AWS services.
+              - Detail how these services work together to fulfill the scope.
+            8 COST ESTIMATION TABLE
+            9 RESOURCES & COST ESTIMATES
 
             RULES:
             - Engagement type '{engagement_type}' drives scope depth and criteria strictness.
             - Section 6: ONLY "Specifics to be discussed basis POC".
-            - Section 7: {dynamic_table_prompt}
+            - Section 8: {dynamic_table_prompt}
             - No markdown bolding (**). No introductory fluff.
-            - Use the exact section numbers (1 through 8) as defined in the flow.
+            - Use the exact section numbers (1 through 9) as defined in the flow.
             """
-            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt_text}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering. Page 1 cover, Page 2 TOC, Page 3 Overview. Create detailed, measurable criteria and functional scope based on user inputs."}]}})
+            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt_text}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering. Page 1 cover, Page 2 TOC, Page 3 Overview. Create detailed, measurable criteria, functional scope, and architecture details based on user inputs."}]}})
             if res:
                 st.session_state.generated_sow = res.json()['candidates'][0]['content']['parts'][0]['text']
                 st.balloons()
