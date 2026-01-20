@@ -5,6 +5,7 @@ import re
 import os
 import time 
 import requests
+import pandas as pd
 
 # --- FILE PATHING & DIAGRAM MAPPING ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -243,10 +244,11 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
     lines = text_content.split('\n')
     i, in_toc_section, content_started = 0, False, False
     
+    # Robust Header Patterns for 11 Sections
     header_patterns = {
         "1": "1 TABLE OF CONTENTS", 
         "2": "2 PROJECT OVERVIEW", 
-        "3": "3 SCOPE OF WORK", 
+        "3": "3 ASSUMPTIONS & DEPENDENCIES", 
         "4": "4 POC SUCCESS CRITERIA",
         "5": "5 SCOPE OF WORK – FUNCTIONAL CAPABILITIES",
         "6": "6 SOLUTION ARCHITECTURE", 
@@ -290,10 +292,9 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
             if not rendered_sections[current_header_id]:
                 doc.add_heading(clean_text, level=1)
                 rendered_sections[current_header_id] = True
-                
                 if current_header_id == "1": in_toc_section = True
                 
-                # Architecture Diagram logic
+                # Diagram injection at Section 6
                 if current_header_id == "6":
                     diag = SOW_DIAGRAM_MAP.get(sow_type_name)
                     if diag and os.path.exists(diag):
@@ -301,7 +302,7 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
                         cap = doc.add_paragraph(f"{sow_type_name} – Architecture Diagram")
                         cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 
-                # Cost table logic
+                # Cost table injection at Section 10
                 if current_header_id == "10": 
                     add_infra_cost_table(doc, sow_type_name, text_content)
             i += 1; continue
@@ -309,20 +310,21 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
         # Table Processing
         if line.startswith('|') and i + 1 < len(lines) and lines[i+1].strip().startswith('|'):
             # Resources logic shifted to section 11
-            if rendered_sections["10"] and not rendered_sections["11"]: i += 1; continue
-            table_lines = []
-            while i < len(lines) and lines[i].strip().startswith('|'):
-                table_lines.append(lines[i]); i += 1
-            if len(table_lines) >= 3:
-                headers = [c.strip() for c in table_lines[0].split('|') if c.strip()]
-                table = doc.add_table(rows=1, cols=len(headers)); table.style = "Table Grid"
-                for idx, h in enumerate(headers): table.rows[0].cells[idx].text = h
-                for row_line in table_lines[2:]:
-                    row_cells = table.add_row().cells
-                    cells = [c.strip() for c in row_line.split('|') if c.strip()]
-                    for idx, c in enumerate(cells):
-                        if idx < len(row_cells): row_cells[idx].text = c
-            continue
+            if rendered_sections["10"] and not rendered_sections["11"]:
+                table_lines = []
+                while i < len(lines) and lines[i].strip().startswith('|'):
+                    table_lines.append(lines[i]); i += 1
+                if len(table_lines) >= 3:
+                    headers = [c.strip() for c in table_lines[0].split('|') if c.strip()]
+                    table = doc.add_table(rows=1, cols=len(headers)); table.style = "Table Grid"
+                    for idx, h in enumerate(headers): table.rows[0].cells[idx].text = h
+                    for row_line in table_lines[2:]:
+                        row_cells = table.add_row().cells
+                        cells = [c.strip() for c in row_line.split('|') if c.strip()]
+                        for idx, c in enumerate(cells):
+                            if idx < len(row_cells): row_cells[idx].text = c
+                continue
+            i += 1; continue
             
         # Formatting Headings and Bullets
         if line.startswith('## '):
@@ -335,12 +337,12 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
             p = doc.add_paragraph(clean_text[2:] if (clean_text.startswith('- ') or clean_text.startswith('* ')) else clean_text, style="List Bullet")
             if in_toc_section: p.paragraph_format.left_indent = Inches(0.4)
         else:
+            # Skip repetitive architecture descriptions
             if "ARCHITECTURE DIAGRAM" in upper_text and rendered_sections["6"] and not rendered_sections["10"]: i += 1; continue
             p = doc.add_paragraph(clean_text)
             bold_kw = ["PARTNER EXECUTIVE SPONSOR", "CUSTOMER EXECUTIVE SPONSOR", "AWS EXECUTIVE SPONSOR", "PROJECT ESCALATION CONTACTS", "ASSUMPTIONS:", "DEPENDENCIES:", "ASSUMPTIONS (", "DEPENDENCIES ("]
             if any(k in upper_text for k in bold_kw) and p.runs: p.runs[0].bold = True
         i += 1
-        
     bio = io.BytesIO(); doc.save(bio); return bio.getvalue()
 
 def call_gemini_with_retry(api_key, payload):
@@ -364,7 +366,6 @@ if 'stakeholders' not in st.session_state:
         "AWS": pd.DataFrame([{"Name": "Anubhav Sood", "Title": "AWS Account Executive", "Email": "anbhsood@amazon.com"}]),
         "Escalation": pd.DataFrame([{"Name": "Omkar Dhavalikar", "Title": "AI/ML Lead", "Email": "omkar.dhavalikar@oneture.com"}, {"Name": "Gaurav Kankaria", "Title": "Head of Analytics and AIML", "Email": "gaurav.kankaria@oneture.com"}])
     }
-
 if 'timeline_phases' not in st.session_state:
     st.session_state.timeline_phases = pd.DataFrame([
         {"Phase": "Infra setup", "Week Range": "Week 1"},
@@ -389,7 +390,6 @@ with st.sidebar:
     industry_options = ["Retail / E-commerce", "BFSI", "Manufacturing", "Telecom", "Healthcare", "Energy / Utilities", "Logistics", "Media", "Government", "Other (specify)"]
     industry_type = st.selectbox("1.3 Industry / Domain", industry_options)
     final_industry = st.text_input("Specify Industry", placeholder="Enter industry...") if industry_type == "Other (specify)" else industry_type
-    
     if st.button("🗑️ Reset All Fields", on_click=clear_sow, use_container_width=True): st.rerun()
 
 # --- MAIN UI ---
@@ -421,18 +421,14 @@ with col_team2:
 
 st.divider()
 st.header("📋 3. Assumptions & Data (Semi-Structured)")
-
-# 3.1 Customer Dependencies
 st.subheader("🔗 3.1 Customer Dependencies")
 st.write("Select all that apply:")
 dep_options = ["Sample data availability", "Historical data availability", "Design / business guidelines finalized", "API access provided", "User access to AWS account", "SME availability for validation", "Network / VPC access", "Security approvals"]
 selected_deps = []
 cols_dep = st.columns(2)
 for idx, opt in enumerate(dep_options):
-    if cols_dep[idx % 2].checkbox(opt, key=f"dep_{idx}"):
-        selected_deps.append(opt)
+    if cols_dep[idx % 2].checkbox(opt, key=f"dep_{idx}"): selected_deps.append(opt)
 
-# 3.2 Data Characteristics
 st.subheader("📊 3.2 Data Characteristics")
 data_types = st.multiselect("What type of data is involved?", ["Images", "Text", "PDFs / Documents", "Audio", "Video", "Structured tables", "APIs / Streams"])
 data_details = {}
@@ -455,101 +451,70 @@ if data_types:
                 fmt = col2.text_input("Formats", "TXT, JSON, CSV", key="txt_fmt")
                 vol = col3.text_input("Approx volume (per day / total)", "10,00,0 records", key="txt_vol")
                 data_details[dtype] = {"Avg Size": sz, "Formats": fmt, "Volume": vol}
-            elif dtype == "Audio":
-                sz = col1.text_input("Avg size (MB)", "10 MB", key="aud_sz")
-                fmt = col2.text_input("Formats", "MP3, WAV", key="aud_fmt")
-                vol = col3.text_input("Approx volume", "100 hours", key="aud_vol")
-                data_details[dtype] = {"Avg Size": sz, "Formats": fmt, "Volume": vol}
-            elif dtype == "Video":
-                sz = col1.text_input("Avg size (MB/GB)", "500 MB", key="vid_sz")
-                fmt = col2.text_input("Formats", "MP4, MKV", key="vid_fmt")
-                vol = col3.text_input("Approx volume", "50 clips", key="vid_vol")
-                data_details[dtype] = {"Avg Size": sz, "Formats": fmt, "Volume": vol}
             else:
                 sz = col1.text_input("Avg size", "TBD", key=f"gen_sz_{dtype}")
                 fmt = col2.text_input("Formats / Specs", "TBD", key=f"gen_fmt_{dtype}")
                 vol = col3.text_input("Approx volume", "TBD", key=f"gen_vol_{dtype}")
                 data_details[dtype] = {"Avg Size": sz, "Formats": fmt, "Volume": vol}
 
-# 3.3 Key Assumptions
 st.subheader("💡 3.3 Key Assumptions")
 assump_options = ["PoC only, not production-grade", "Limited data volume", "Rule-based logic acceptable initially", "Manual review for edge cases", "No real-time SLA commitments"]
 selected_assumps = []
 cols_as = st.columns(2)
 for idx, opt in enumerate(assump_options):
-    if cols_as[idx % 2].checkbox(opt, key=f"as_{idx}"):
-        selected_assumps.append(opt)
+    if cols_as[idx % 2].checkbox(opt, key=f"as_{idx}"): selected_assumps.append(opt)
 other_assump = st.text_input("Other (Free text)", placeholder="Enter any other project assumptions...")
 if other_assump: selected_assumps.append(other_assump)
 
 st.divider()
-
-# --- 4. PoC Success Criteria ---
 st.header("🎯 4. PoC Success Criteria")
 st.subheader("📊 4.1 Success Dimensions")
-st.write("Select all that apply:")
 success_dim_options = ["Accuracy", "Latency", "Usability", "Explainability", "Coverage", "Cost efficiency", "Integration readiness"]
 selected_dims = st.multiselect("Dimensions:", success_dim_options, default=["Accuracy", "Cost efficiency"])
-
 st.subheader("✅ 4.2 User Validation Requirement")
 val_req = st.radio("Customer validation requirement:", ["Yes – customer validation required", "No – internal validation sufficient"])
 
 st.divider()
-
-# --- 5. Scope of Work – Functional Capabilities ---
 st.header("🛠️ 5. Scope of Work – Functional Capabilities")
 st.subheader("⚙️ 5.1 Core Capabilities")
-st.write("Select project flows to include:")
 cap_options = ["Upload / Ingestion", "Processing / Inference", "Metadata extraction", "Scoring / Recommendation", "Feedback loop", "UI display"]
 selected_caps = []
 cols_cap = st.columns(2)
 for idx, opt in enumerate(cap_options):
-    if cols_cap[idx % 2].checkbox(opt, value=True, key=f"cap_{idx}"):
-        selected_caps.append(opt)
+    if cols_cap[idx % 2].checkbox(opt, value=True, key=f"cap_{idx}"): selected_caps.append(opt)
 custom_step = st.text_input("Add custom step (Optional):", placeholder="e.g., Automated reporting module...")
 if custom_step: selected_caps.append(custom_step)
-
 st.subheader("🔗 5.2 Integrations Required")
-int_options = ["Internal databases", "External APIs", "CRM", "ERP", "Search engine", "Data warehouse", "None"]
-selected_ints = st.multiselect("Select systems to integrate:", int_options, default=["None"])
+selected_ints = st.multiselect("Select systems to integrate:", ["Internal databases", "External APIs", "CRM", "ERP", "Search engine", "Data warehouse", "None"], default=["None"])
 
 st.divider()
-
-# --- 6. Architecture & AWS Services ---
 st.header("🏢 6. Architecture & AWS Services")
 st.subheader("🖥️ 6.1 Compute & Orchestration")
 compute_option = st.multiselect("Select compute & orchestration services:", ["AWS Lambda", "Step Functions", "Amazon ECS / EKS", "Hybrid"], default=["AWS Lambda", "Step Functions"])
-
 st.subheader("🤖 6.2 GenAI / ML Services")
 ml_services = st.multiselect("Select AI services:", ["Amazon Bedrock", "Amazon SageMaker", "Amazon Rekognition", "Amazon Textract", "Amazon Comprehend", "Amazon Transcribe", "Amazon Translate"], default=["Amazon Bedrock"])
-
 st.subheader("💾 6.3 Storage & Search")
 storage_services = st.multiselect("Select Storage & Search:", ["Amazon S3", "Amazon DynamoDB", "Amazon OpenSearch", "Amazon RDS", "Vector DB (OpenSearch)", "Vector DB (Aurora PG)"], default=["Amazon S3"])
 
 st.divider()
-
-# --- 7. Non-Functional Requirements ---
 st.header("⚙️ 7. Non-Functional Requirements")
 st.subheader("⚡ 7.1 Performance Expectations")
 perf_expectation = st.selectbox("Select expected performance profile:", ["Batch", "Near real-time", "Real-time"], index=1)
-
 st.subheader("🛡️ 7.2 Security & Compliance")
 sec_compliance = st.multiselect("Select security controls:", ["IAM-based access", "Encryption at rest", "Encryption in transit", "VPC deployment", "Audit logging", "Compliance alignment (RBI, SOC2, etc.)"], default=["IAM-based access", "Encryption at rest", "VPC deployment"])
 
 st.divider()
-
-# --- 8. Timeline & Phasing ---
+# --- 8. Timeline & Phasing (Entirely Editable Form) ---
 st.header("📅 8. Timeline & Phasing")
-st.subheader("⌛ 8.1 PoC Duration")
-poc_duration = st.selectbox("Select PoC duration:", ["2 weeks", "4 weeks", "6 weeks", "Custom"], index=1)
-if poc_duration == "Custom":
-    final_duration = st.text_input("Specify Duration:", "8 weeks")
-else:
-    final_duration = poc_duration
-
-st.subheader("📈 8.2 Phase Breakdown")
-st.write("Edit week mapping as needed:")
-st.session_state.timeline_phases = st.data_editor(st.session_state.timeline_phases, num_rows="dynamic", use_container_width=True, key="ed_timeline")
+col8_1, col8_2 = st.columns([1, 2])
+with col8_1:
+    st.subheader("⌛ 8.1 PoC Duration")
+    poc_duration = st.selectbox("Select PoC duration:", ["2 weeks", "4 weeks", "6 weeks", "Custom"], index=1)
+    final_duration = st.text_input("Specify Custom Duration:", "8 weeks") if poc_duration == "Custom" else poc_duration
+with col8_2:
+    st.subheader("📈 8.2 Phase Breakdown")
+    st.write("Entirely editable Week Mapping:")
+    st.session_state.timeline_phases = st.data_editor(st.session_state.timeline_phases, num_rows="dynamic", use_container_width=True, key="ed_timeline")
 
 # --- GENERATION ---
 if st.button("✨ Generate SOW Document", type="primary", use_container_width=True):
@@ -563,82 +528,38 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             for k, v in cost_info.items():
                 label = "POC" if k=="poc_cost" else "Production" if k=="prod_cost" else "Bedrock" if k=="amazon_bedrock" else "Total"
                 dynamic_table_prompt += f"| {label} | {v} | Estimate |\n"
-
             dep_context = "\n".join([f"- {d}" for d in selected_deps])
             as_context = "\n".join([f"- {a}" for a in selected_assumps])
-            data_context = ""
-            for dt, val in data_details.items():
-                data_context += f"- **{dt}**: " + ", ".join([f"{k}: {v}" for k, v in val.items()]) + "\n"
-
-            # --- REFINED AI PROMPT ---
+            data_context = "".join([f"- **{dt}**: {', '.join([f'{k}: {v}' for k, v in val.items()])}\n" for dt, val in data_details.items()])
+            
+            # Adapted prompt to strictly incorporate all 11 sections
             prompt_text = f"""
-            Generate a COMPLETE, high-quality formal enterprise SOW for {selected_sow_name} in the {final_industry} industry.
+            Generate a COMPLETE formal enterprise SOW for {selected_sow_name} in the {final_industry} industry.
             
-            PROJECT PARAMETERS:
-            - Engagement Type: {engagement_type}
-            - Overall Timeline: {final_duration}
-            
-            STRICT SECTION FLOW (USE THESE EXACT HEADERS AND NUMBERS):
+            STRICT SECTION FLOW (USE THESE EXACT NUMBERS AND HEADERS):
             1 TABLE OF CONTENTS
-            2 PROJECT OVERVIEW
-              2.1 OBJECTIVE: {objective}
-              2.2 PROJECT TEAM (Include Partner, Customer, and Escalation tables):
-                  {get_md(st.session_state.stakeholders["Partner"])}
-                  {get_md(st.session_state.stakeholders["Customer"])}
-                  {get_md(st.session_state.stakeholders["Escalation"])}
-              2.3 PROJECT SUCCESS CRITERIA (Select from): {', '.join(outcomes)}
-            3 SCOPE OF WORK
-              3.1 CUSTOMER DEPENDENCIES:
-                  Expand these into professional dependency statements:
-                  {dep_context if selected_deps else "Standard data and SME availability."}
-              3.2 DATA CHARACTERISTICS & ARCHITECTURAL ASSUMPTIONS:
-                  Incorporate these technical details into the plan:
-                  {data_context if data_context else "Standard text-based documents."}
-              3.3 KEY ASSUMPTIONS:
-                  Formalize these project constraints:
-                  {as_context if selected_assumps else "Standard delivery assumptions."}
-            4 POC SUCCESS CRITERIA
-              - Generate specific, measurable KPIs based on Dimensions: {', '.join(selected_dims)}.
-              - Example for Accuracy: ">=85% precision on test dataset".
-              - User Validation Requirement: {val_req}.
-            5 SCOPE OF WORK – FUNCTIONAL CAPABILITIES
-              - Formalize the following selected core flows into technical requirements: {', '.join(selected_caps)}.
-              - Detail the integration with: {', '.join(selected_ints)}.
-            6 SOLUTION ARCHITECTURE
-              - Placeholder: "Specifics to be discussed basis POC". (Diagram will be inserted here).
-            7 ARCHITECTURE & AWS SERVICES
-              - Detail the role and implementation of:
-                * Compute: {', '.join(compute_option)}
-                * AI/ML Services: {', '.join(ml_services)}
-                * Storage/Search: {', '.join(storage_services)}
-            8 NON-FUNCTIONAL REQUIREMENTS
-              - Performance Expectation: {perf_expectation} (Detail what this means for latency and throughput).
-              - Security & Compliance: {', '.join(sec_compliance)} (Describe the implementation of these controls).
-            9 TIMELINE & PHASING
-              - Document the following phase breakdown in a formal project schedule:
-              {get_md(st.session_state.timeline_phases)}
-            10 COST ESTIMATION TABLE
-              - Provide only this table:
-              {dynamic_table_prompt}
+            2 PROJECT OVERVIEW (Objective: {objective}. Include Partner, Customer, and Escalation team tables provided.)
+            3 ASSUMPTIONS & DEPENDENCIES
+              3.1 Customer Dependencies: {dep_context}
+              3.2 Data Characteristics: {data_context}
+              3.3 Key Assumptions: {as_context}
+            4 POC SUCCESS CRITERIA (Dimensions: {', '.join(selected_dims)}. Requirement: {val_req}.)
+            5 SCOPE OF WORK – FUNCTIONAL CAPABILITIES (Flows: {', '.join(selected_caps)}. Integrations: {', '.join(selected_ints)}.)
+            6 SOLUTION ARCHITECTURE (Placeholder for Diagram: "Specifics to be discussed basis POC".)
+            7 ARCHITECTURE & AWS SERVICES (Compute: {', '.join(compute_option)}. AI: {', '.join(ml_services)}. Storage: {', '.join(storage_services)}.)
+            8 NON-FUNCTIONAL REQUIREMENTS (Performance: {perf_expectation}. Security: {', '.join(sec_compliance)}.)
+            9 TIMELINE & PHASING (Overall: {final_duration}. Phases: {get_md(st.session_state.timeline_phases)}.)
+            10 COST ESTIMATION TABLE (Pricing: {dynamic_table_prompt})
             11 RESOURCES & COST ESTIMATES
 
             INSTRUCTIONS:
-            - The Engagement Type '{engagement_type}' must drive the 'Depth of Scope' and 'Strictness of Criteria'.
-            - If Engagement is 'PoC', focus on technical feasibility. If 'Production', focus on scalability and SLAs.
-            - Do not use markdown bolding (**). Use section numbers and standard paragraph text.
-            - Maintain an enterprise solutions architect tone.
+            - Engagement type '{engagement_type}' drives depth. Use professional AWS Solutions Architect tone.
+            - Follow numbering 1 to 11 exactly. No markdown bolding (**).
             """
-
-            payload = {
-                "contents": [{"parts": [{"text": prompt_text}]}], 
-                "systemInstruction": {"parts": [{"text": f"You are a professional AWS Solutions Architect. Follow the numbering 1 to 11 exactly. Start with '1 TABLE OF CONTENTS'. No repetition. Current context: {engagement_type}."}]}
-            }
-            
-            res, err = call_gemini_with_retry(api_key, payload)
+            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt_text}]}], "systemInstruction": {"parts": [{"text": f"AWS Architect. Follow numbering 1 to 11 exactly. Start with '1 TABLE OF CONTENTS'."}]}})
             if res:
                 st.session_state.generated_sow = res.json()['candidates'][0]['content']['parts'][0]['text']
-                st.balloons()
-                st.rerun()
+                st.balloons(); st.rerun()
             else: st.error(err)
 
 # --- STEP 3: REVIEW & EXPORT ---
@@ -652,7 +573,7 @@ if st.session_state.generated_sow:
         calc_url_p = CALCULATOR_LINKS.get(selected_sow_name, "https://calculator.aws")
         preview_content = st.session_state.generated_sow.replace("Estimate", f'<a href="{calc_url_p}" target="_blank" style="color:#3b82f6; text-decoration: underline;">Estimate</a>')
         
-        # Match section 6 for diagram injection
+        # Injection logic for Section 6 Solution Architecture diagram
         match = re.search(r'(?i)(^#*\s*6\s+SOLUTION ARCHITECTURE.*)', preview_content, re.MULTILINE)
         if match:
             start, end = match.span(); st.markdown(preview_content[:end], unsafe_allow_html=True)
