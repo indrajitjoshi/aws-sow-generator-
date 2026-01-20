@@ -188,39 +188,61 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
     from docx.shared import Inches, Pt, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     doc = Document()
+    
+    # Render sections tracking
     rendered_sections = {"1": False, "2": False, "3": False, "4": False, "5": False, "6": False, "7": False}
+    
+    # --- PAGE 1: COVER PAGE ---
     p_top = doc.add_paragraph()
     if os.path.exists(AWS_PN_LOGO): doc.add_picture(AWS_PN_LOGO, width=Inches(1.6))
     doc.add_paragraph("\n" * 3)
+    
     title_p = doc.add_paragraph()
     title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = title_p.add_run(branding_info['sow_name'])
     run.font.size, run.bold = Pt(26), True
+    
     subtitle_p = doc.add_paragraph()
     subtitle_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     subtitle_p.add_run("Scope of Work Document").font.size = Pt(14)
+    
     doc.add_paragraph("\n" * 4)
+    
     logo_table = doc.add_table(rows=1, cols=3)
     logo_table.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    # Customer Logo
     cell = logo_table.rows[0].cells[0]
     cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-    if branding_info.get("customer_logo_bytes"): cell.paragraphs[0].add_run().add_picture(io.BytesIO(branding_info["customer_logo_bytes"]), width=Inches(1.8))
-    else: cell.paragraphs[0].add_run("Customer Logo").bold = True
+    if branding_info.get("customer_logo_bytes"): 
+        cell.paragraphs[0].add_run().add_picture(io.BytesIO(branding_info["customer_logo_bytes"]), width=Inches(1.8))
+    else: 
+        cell.paragraphs[0].add_run("Customer Logo").bold = True
+    
+    # Oneture Logo
     cell = logo_table.rows[0].cells[1]
     cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
     if os.path.exists(ONETURE_LOGO): cell.paragraphs[0].add_run().add_picture(ONETURE_LOGO, width=Inches(2.2))
+    
+    # AWS Logo
     cell = logo_table.rows[0].cells[2]
     cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
     if os.path.exists(AWS_ADV_LOGO): cell.paragraphs[0].add_run().add_picture(AWS_ADV_LOGO, width=Inches(1.8))
+    
     doc.add_paragraph("\n" * 3)
     date_p = doc.add_paragraph()
     date_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     date_p.add_run(branding_info["doc_date_str"]).bold = True
+    
     doc.add_page_break()
+    
+    # --- CONTENT PROCESSING ---
     style = doc.styles['Normal']
     style.font.name, style.font.size = 'Arial', Pt(11)
+    
     lines = text_content.split('\n')
     i, in_toc_section, content_started = 0, False, False
+    
     header_patterns = {
         "1": "1 TABLE OF CONTENTS", 
         "2": "2 PROJECT OVERVIEW", 
@@ -230,34 +252,61 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
         "6": "6 COST ESTIMATION TABLE", 
         "7": "7 RESOURCES & COST ESTIMATES"
     }
+    
     while i < len(lines):
         line = lines[i].strip()
         if not line:
             if i > 0 and lines[i-1].strip() and content_started: doc.add_paragraph("")
             i += 1; continue
+            
         line_clean = re.sub(r'\*+', '', line).strip()
         clean_text = re.sub(r'^#+\s*', '', line_clean).strip()
         upper_text = clean_text.upper()
-        current_header_id = next((h_id for h_id, pattern in header_patterns.items() if upper_text.startswith(pattern)), None)
+        
+        # Robust Header Detection (Handles "1.", "1 ", etc.)
+        current_header_id = None
+        for h_id, pattern in header_patterns.items():
+            # Get the core title part (e.g., "TABLE OF CONTENTS")
+            core_title = pattern.split(' ', 1)[1]
+            # Match if line starts with "{id} {Title}" or "{id}. {Title}"
+            if upper_text.startswith(f"{h_id} {core_title}") or upper_text.startswith(f"{h_id}. {core_title}"):
+                current_header_id = h_id
+                break
+        
+        # Skip technical placeholders
         if any(kw in upper_text for kw in ["PLACEHOLDER FOR COST TABLE", "SPECIFICS TO BE DISCUSSED BASIS POC"]):
             i += 1; continue
+            
+        # Ensure content starts with TOC
         if not content_started:
-            if current_header_id == "1": content_started = True
-            else: i += 1; continue
+            if current_header_id == "1": 
+                content_started = True
+            else: 
+                i += 1; continue
+        
         if current_header_id:
+            # Handle page breaks for TOC and Overview
             if in_toc_section and current_header_id == "2":
                 in_toc_section = False; doc.add_page_break()
+            
             if not rendered_sections[current_header_id]:
                 doc.add_heading(clean_text, level=1)
                 rendered_sections[current_header_id] = True
+                
                 if current_header_id == "1": in_toc_section = True
+                
+                # Insert dynamic assets/tables
                 if current_header_id == "5":
                     diag = SOW_DIAGRAM_MAP.get(sow_type_name)
                     if diag and os.path.exists(diag):
                         doc.add_paragraph(""); doc.add_picture(diag, width=Inches(6.0))
-                        cap = doc.add_paragraph(f"{sow_type_name} – Architecture Diagram"); cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                if current_header_id == "6": add_infra_cost_table(doc, sow_type_name, text_content)
+                        cap = doc.add_paragraph(f"{sow_type_name} – Architecture Diagram")
+                        cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                if current_header_id == "6": 
+                    add_infra_cost_table(doc, sow_type_name, text_content)
             i += 1; continue
+            
+        # Table Processing
         if line.startswith('|') and i + 1 < len(lines) and lines[i+1].strip().startswith('|'):
             if rendered_sections["6"] and not rendered_sections["7"]: i += 1; continue
             table_lines = []
@@ -273,6 +322,8 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
                     for idx, c in enumerate(cells):
                         if idx < len(row_cells): row_cells[idx].text = c
             continue
+            
+        # Formatting Headings and Bullets
         if line.startswith('## '):
             h = doc.add_heading(clean_text, level=2)
             if in_toc_section: h.paragraph_format.left_indent = Inches(0.4)
@@ -288,6 +339,7 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
             bold_kw = ["PARTNER EXECUTIVE SPONSOR", "CUSTOMER EXECUTIVE SPONSOR", "AWS EXECUTIVE SPONSOR", "PROJECT ESCALATION CONTACTS", "ASSUMPTIONS:", "DEPENDENCIES:", "ASSUMPTIONS (", "DEPENDENCIES ("]
             if any(k in upper_text for k in bold_kw) and p.runs: p.runs[0].bold = True
         i += 1
+        
     bio = io.BytesIO(); doc.save(bio); return bio.getvalue()
 
 def call_gemini_with_retry(api_key, payload):
@@ -456,7 +508,7 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             Generate a COMPLETE formal enterprise SOW for {selected_sow_name} in {final_industry}.
             ENGAGEMENT TYPE: {engagement_type}
             
-            STRICT SECTION FLOW:
+            STRICT SECTION FLOW (Use exactly these numbers and headers):
             1 TABLE OF CONTENTS
             2 PROJECT OVERVIEW
               2.1 OBJECTIVE: {objective}
@@ -492,6 +544,7 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             - Section 5: ONLY "Specifics to be discussed basis POC".
             - Section 6: {dynamic_table_prompt}
             - No markdown bolding (**). No introductory fluff.
+            - Use the exact section numbers (1 through 7) as defined in the flow.
             """
             res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt_text}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering. Page 1 cover, Page 2 TOC, Page 3 Overview. Create detailed and measurable criteria based on user inputs."}]}})
             if res:
@@ -511,7 +564,7 @@ if st.session_state.generated_sow:
         calc_url_p = CALCULATOR_LINKS.get(selected_sow_name, "https://calculator.aws")
         preview_content = st.session_state.generated_sow.replace("Estimate", f'<a href="{calc_url_p}" target="_blank" style="color:#3b82f6; text-decoration: underline;">Estimate</a>')
         
-        # Look for Section 5 (Architecture) now
+        # Look for Section 5 (Architecture)
         match = re.search(r'(?i)(^#*\s*5\s+SOLUTION ARCHITECTURE.*)', preview_content, re.MULTILINE)
         if match:
             start, end = match.span(); st.markdown(preview_content[:end], unsafe_allow_html=True)
