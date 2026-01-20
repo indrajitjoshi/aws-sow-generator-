@@ -142,7 +142,7 @@ def add_poc_calculation_table(doc):
         ("Total Cost in USD", "750", ""),
         ("", "", ""),
         ("Tokens for Embedding Model", "2,50,00,00,000", ""),
-        ("Input Cost per 1,000 Tokens", "0", "Cohere English Model"),
+        ("Input Cost per 1,00,000 Tokens", "0", "Cohere English Model"),
         ("Total Embedding Model Cost in USD", "250", ""),
         ("", "", ""),
         ("Total Cost in USD per month", "1,000", "")
@@ -508,7 +508,7 @@ st.divider()
 # --- 6. Architecture & AWS Services ---
 st.header("🏢 6. Architecture & AWS Services")
 st.subheader("🖥️ 6.1 Compute & Orchestration")
-compute_option = st.selectbox("Select primary compute (Default: Lambda + Step Functions):", ["AWS Lambda + Step Functions", "Amazon ECS / EKS", "Hybrid"], index=0)
+compute_option = st.selectbox("Select primary compute:", ["AWS Lambda", "Step Functions", "Amazon ECS / EKS", "Hybrid"], index=0)
 
 st.subheader("🤖 6.2 GenAI / ML Services")
 ml_services = st.multiselect("Select AI services:", ["Amazon Bedrock", "Amazon SageMaker", "Amazon Rekognition", "Amazon Textract", "Amazon Comprehend", "Amazon Transcribe", "Amazon Translate"], default=["Amazon Bedrock"])
