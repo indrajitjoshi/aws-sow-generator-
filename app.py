@@ -96,12 +96,6 @@ st.markdown("""
         color: #334155;
         border-left: 4px solid #3b82f6;
     }
-    .selection-box {
-        background-color: #ffffff;
-        padding: 20px;
-        border-radius: 10px;
-        border: 1px solid #e2e8f0;
-    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -151,7 +145,7 @@ def add_poc_calculation_table(doc):
         ("Input Cost per 1,000 Tokens", "0", "Cohere English Model"),
         ("Total Embedding Model Cost in USD", "250", ""),
         ("", "", ""),
-        ("Total Cost in USD per month", "1,00,0", "")
+        ("Total Cost in USD per month", "1,000", "")
     ]
     for row in data:
         cells = table.add_row().cells
@@ -194,7 +188,7 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
     from docx.shared import Inches, Pt, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     doc = Document()
-    rendered_sections = {"1": False, "2": False, "3": False, "4": False, "5": False, "6": False}
+    rendered_sections = {"1": False, "2": False, "3": False, "4": False, "5": False, "6": False, "7": False}
     p_top = doc.add_paragraph()
     if os.path.exists(AWS_PN_LOGO): doc.add_picture(AWS_PN_LOGO, width=Inches(1.6))
     doc.add_paragraph("\n" * 3)
@@ -227,7 +221,15 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
     style.font.name, style.font.size = 'Arial', Pt(11)
     lines = text_content.split('\n')
     i, in_toc_section, content_started = 0, False, False
-    header_patterns = {"1": "1 TABLE OF CONTENTS", "2": "2 PROJECT OVERVIEW", "3": "3 SCOPE OF WORK", "4": "4 SOLUTION ARCHITECTURE", "5": "5 COST ESTIMATION TABLE", "6": "6 RESOURCES & COST ESTIMATES"}
+    header_patterns = {
+        "1": "1 TABLE OF CONTENTS", 
+        "2": "2 PROJECT OVERVIEW", 
+        "3": "3 SCOPE OF WORK", 
+        "4": "4 POC SUCCESS CRITERIA",
+        "5": "5 SOLUTION ARCHITECTURE", 
+        "6": "6 COST ESTIMATION TABLE", 
+        "7": "7 RESOURCES & COST ESTIMATES"
+    }
     while i < len(lines):
         line = lines[i].strip()
         if not line:
@@ -249,15 +251,15 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
                 doc.add_heading(clean_text, level=1)
                 rendered_sections[current_header_id] = True
                 if current_header_id == "1": in_toc_section = True
-                if current_header_id == "4":
+                if current_header_id == "5":
                     diag = SOW_DIAGRAM_MAP.get(sow_type_name)
                     if diag and os.path.exists(diag):
                         doc.add_paragraph(""); doc.add_picture(diag, width=Inches(6.0))
                         cap = doc.add_paragraph(f"{sow_type_name} – Architecture Diagram"); cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                if current_header_id == "5": add_infra_cost_table(doc, sow_type_name, text_content)
+                if current_header_id == "6": add_infra_cost_table(doc, sow_type_name, text_content)
             i += 1; continue
         if line.startswith('|') and i + 1 < len(lines) and lines[i+1].strip().startswith('|'):
-            if rendered_sections["5"] and not rendered_sections["6"]: i += 1; continue
+            if rendered_sections["6"] and not rendered_sections["7"]: i += 1; continue
             table_lines = []
             while i < len(lines) and lines[i].strip().startswith('|'):
                 table_lines.append(lines[i]); i += 1
@@ -281,7 +283,7 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
             p = doc.add_paragraph(clean_text[2:] if (clean_text.startswith('- ') or clean_text.startswith('* ')) else clean_text, style="List Bullet")
             if in_toc_section: p.paragraph_format.left_indent = Inches(0.4)
         else:
-            if "ARCHITECTURE DIAGRAM" in upper_text and rendered_sections["4"] and not rendered_sections["5"]: i += 1; continue
+            if "ARCHITECTURE DIAGRAM" in upper_text and rendered_sections["5"] and not rendered_sections["6"]: i += 1; continue
             p = doc.add_paragraph(clean_text)
             bold_kw = ["PARTNER EXECUTIVE SPONSOR", "CUSTOMER EXECUTIVE SPONSOR", "AWS EXECUTIVE SPONSOR", "PROJECT ESCALATION CONTACTS", "ASSUMPTIONS:", "DEPENDENCIES:", "ASSUMPTIONS (", "DEPENDENCIES ("]
             if any(k in upper_text for k in bold_kw) and p.runs: p.runs[0].bold = True
@@ -362,16 +364,7 @@ st.header("📋 3. Assumptions & Data (Semi-Structured)")
 # 3.1 Customer Dependencies
 st.subheader("🔗 3.1 Customer Dependencies")
 st.write("Select all that apply:")
-dep_options = [
-    "Sample data availability", 
-    "Historical data availability", 
-    "Design / business guidelines finalized", 
-    "API access provided", 
-    "User access to AWS account", 
-    "SME availability for validation", 
-    "Network / VPC access", 
-    "Security approvals"
-]
+dep_options = ["Sample data availability", "Historical data availability", "Design / business guidelines finalized", "API access provided", "User access to AWS account", "SME availability for validation", "Network / VPC access", "Security approvals"]
 selected_deps = []
 cols_dep = st.columns(2)
 for idx, opt in enumerate(dep_options):
@@ -419,13 +412,7 @@ if data_types:
 
 # 3.3 Key Assumptions
 st.subheader("💡 3.3 Key Assumptions")
-assump_options = [
-    "PoC only, not production-grade", 
-    "Limited data volume", 
-    "Rule-based logic acceptable initially", 
-    "Manual review for edge cases", 
-    "No real-time SLA commitments"
-]
+assump_options = ["PoC only, not production-grade", "Limited data volume", "Rule-based logic acceptable initially", "Manual review for edge cases", "No real-time SLA commitments"]
 selected_assumps = []
 cols_as = st.columns(2)
 for idx, opt in enumerate(assump_options):
@@ -436,23 +423,15 @@ if other_assump: selected_assumps.append(other_assump)
 
 st.divider()
 
-# --- NEW SECTION: 4. PoC Success Criteria ---
+# --- 4. PoC Success Criteria ---
 st.header("🎯 4. PoC Success Criteria")
 st.subheader("📊 4.1 Success Dimensions")
 st.write("Select all that apply:")
-success_dim_options = [
-    "Accuracy", 
-    "Latency", 
-    "Usability", 
-    "Explainability", 
-    "Coverage", 
-    "Cost efficiency", 
-    "Integration readiness"
-]
+success_dim_options = ["Accuracy", "Latency", "Usability", "Explainability", "Coverage", "Cost efficiency", "Integration readiness"]
 selected_dims = st.multiselect("Dimensions:", success_dim_options, default=["Accuracy", "Cost efficiency"])
 
 st.subheader("✅ 4.2 User Validation Requirement")
-val_req = st.radio("Customer validation required?", ["Yes – customer validation required", "No – internal validation sufficient"])
+val_req = st.radio("Customer validation requirement:", ["Yes – customer validation required", "No – internal validation sufficient"])
 
 # --- GENERATION ---
 if st.button("✨ Generate SOW Document", type="primary", use_container_width=True):
@@ -467,7 +446,6 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
                 label = "POC" if k=="poc_cost" else "Production" if k=="prod_cost" else "Bedrock" if k=="amazon_bedrock" else "Total"
                 dynamic_table_prompt += f"| {label} | {v} | Estimate |\n"
 
-            # Context construction
             dep_context = "\n".join([f"- {d}" for d in selected_deps])
             as_context = "\n".join([f"- {a}" for a in selected_assumps])
             data_context = ""
@@ -500,41 +478,41 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
               3.3 KEY ASSUMPTIONS
                   Formalize these project assumptions:
                   {as_context if selected_assumps else "- Standard agile delivery assumptions."}
-            4 SOLUTION ARCHITECTURE / ARCHITECTURAL DIAGRAM
-            5 COST ESTIMATION TABLE
-            6 RESOURCES & COST ESTIMATES
-
-            SPECIAL INSTRUCTIONS FOR SUCCESS CRITERIA:
-            Based on selected Success Dimensions: {', '.join(selected_dims)}
-            Validation Requirement: {val_req}
-            
-            - GENERATE MEASURABLE SUCCESS CRITERIA tailored to {selected_sow_name}.
-            - Example: For Image Inspection, criteria should be like '≥85% match with manual reviewer outcomes'.
-            - Ensure criteria are specific, measurable, and relevant to the selected dimensions.
-            - Explicitly mention that customer validation is required if requested.
+            4 POC SUCCESS CRITERIA
+              Based on Success Dimensions: {', '.join(selected_dims)}
+              Validation Requirement: {val_req}
+              - Generate specific, measurable success criteria. 
+              - Example: "≥85% match with manual reviewer outcomes".
+            5 SOLUTION ARCHITECTURE / ARCHITECTURAL DIAGRAM
+            6 COST ESTIMATION TABLE
+            7 RESOURCES & COST ESTIMATES
 
             RULES:
             - Engagement type '{engagement_type}' drives scope depth and criteria strictness.
-            - Section 4: ONLY "Specifics to be discussed basis POC".
-            - Section 5: {dynamic_table_prompt}
+            - Section 5: ONLY "Specifics to be discussed basis POC".
+            - Section 6: {dynamic_table_prompt}
             - No markdown bolding (**). No introductory fluff.
             """
-            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt_text}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering. Page 1 cover, Page 2 TOC, Page 3 Overview. Create highly detailed and measurable success criteria based on the user's choices."}]}})
+            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt_text}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering. Page 1 cover, Page 2 TOC, Page 3 Overview. Create detailed and measurable criteria based on user inputs."}]}})
             if res:
                 st.session_state.generated_sow = res.json()['candidates'][0]['content']['parts'][0]['text']
                 st.balloons()
+                st.rerun()
             else: st.error(err)
 
 # --- STEP 3: REVIEW & EXPORT ---
 if st.session_state.generated_sow:
     st.divider(); st.header("3. Review & Export")
     tab_edit, tab_preview = st.tabs(["✍️ Document Editor", "📄 Visual Preview"])
-    with tab_edit: st.session_state.generated_sow = st.text_area("Modify:", value=st.session_state.generated_sow, height=600, key="sow_editor")
+    with tab_edit: 
+        st.session_state.generated_sow = st.text_area("Modify:", value=st.session_state.generated_sow, height=600, key="sow_editor")
     with tab_preview:
         st.markdown('<div class="sow-preview">', unsafe_allow_html=True)
         calc_url_p = CALCULATOR_LINKS.get(selected_sow_name, "https://calculator.aws")
         preview_content = st.session_state.generated_sow.replace("Estimate", f'<a href="{calc_url_p}" target="_blank" style="color:#3b82f6; text-decoration: underline;">Estimate</a>')
-        match = re.search(r'(?i)(^#*\s*4\s+SOLUTION ARCHITECTURE.*)', preview_content, re.MULTILINE)
+        
+        # Look for Section 5 (Architecture) now
+        match = re.search(r'(?i)(^#*\s*5\s+SOLUTION ARCHITECTURE.*)', preview_content, re.MULTILINE)
         if match:
             start, end = match.span(); st.markdown(preview_content[:end], unsafe_allow_html=True)
             diag_out = SOW_DIAGRAM_MAP.get(selected_sow_name)
@@ -542,6 +520,7 @@ if st.session_state.generated_sow:
             st.markdown(preview_content[end:], unsafe_allow_html=True)
         else: st.markdown(preview_content, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
+        
     if st.button("💾 Prepare Microsoft Word Document"):
         info = {"sow_name": selected_sow_name, "customer_logo_bytes": customer_logo.getvalue() if customer_logo else None, "doc_date_str": doc_date.strftime("%d %B %Y")}
         docx_data = create_docx_logic(st.session_state.generated_sow, info, selected_sow_name)
