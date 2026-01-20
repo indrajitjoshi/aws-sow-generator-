@@ -189,8 +189,8 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     doc = Document()
     
-    # Render sections tracking (1-9)
-    rendered_sections = {str(i): False for i in range(1, 10)}
+    # Render sections tracking (1-10)
+    rendered_sections = {str(i): False for i in range(1, 11)}
     
     # --- PAGE 1: COVER PAGE ---
     p_top = doc.add_paragraph()
@@ -251,8 +251,9 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
         "5": "5 SCOPE OF WORK – FUNCTIONAL CAPABILITIES",
         "6": "6 SOLUTION ARCHITECTURE", 
         "7": "7 ARCHITECTURE & AWS SERVICES",
-        "8": "8 COST ESTIMATION TABLE", 
-        "9": "9 RESOURCES & COST ESTIMATES"
+        "8": "8 NON-FUNCTIONAL REQUIREMENTS",
+        "9": "9 COST ESTIMATION TABLE", 
+        "10": "10 RESOURCES & COST ESTIMATES"
     }
     
     while i < len(lines):
@@ -300,14 +301,14 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
                         cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 
                 # Cost table logic
-                if current_header_id == "8": 
+                if current_header_id == "9": 
                     add_infra_cost_table(doc, sow_type_name, text_content)
             i += 1; continue
             
         # Table Processing
         if line.startswith('|') and i + 1 < len(lines) and lines[i+1].strip().startswith('|'):
-            # Resources logic shifted to section 9
-            if rendered_sections["8"] and not rendered_sections["9"]: i += 1; continue
+            # Resources logic shifted to section 10
+            if rendered_sections["9"] and not rendered_sections["10"]: i += 1; continue
             table_lines = []
             while i < len(lines) and lines[i].strip().startswith('|'):
                 table_lines.append(lines[i]); i += 1
@@ -333,7 +334,7 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
             p = doc.add_paragraph(clean_text[2:] if (clean_text.startswith('- ') or clean_text.startswith('* ')) else clean_text, style="List Bullet")
             if in_toc_section: p.paragraph_format.left_indent = Inches(0.4)
         else:
-            if "ARCHITECTURE DIAGRAM" in upper_text and rendered_sections["6"] and not rendered_sections["8"]: i += 1; continue
+            if "ARCHITECTURE DIAGRAM" in upper_text and rendered_sections["6"] and not rendered_sections["9"]: i += 1; continue
             p = doc.add_paragraph(clean_text)
             bold_kw = ["PARTNER EXECUTIVE SPONSOR", "CUSTOMER EXECUTIVE SPONSOR", "AWS EXECUTIVE SPONSOR", "PROJECT ESCALATION CONTACTS", "ASSUMPTIONS:", "DEPENDENCIES:", "ASSUMPTIONS (", "DEPENDENCIES ("]
             if any(k in upper_text for k in bold_kw) and p.runs: p.runs[0].bold = True
@@ -508,13 +509,23 @@ st.divider()
 # --- 6. Architecture & AWS Services ---
 st.header("🏢 6. Architecture & AWS Services")
 st.subheader("🖥️ 6.1 Compute & Orchestration")
-compute_option = st.selectbox("Select primary compute:", ["AWS Lambda", "Step Functions", "Amazon ECS / EKS", "Hybrid"], index=0)
+compute_option = st.multiselect("Select compute & orchestration services:", ["AWS Lambda", "Step Functions", "Amazon ECS / EKS", "Hybrid"], default=["AWS Lambda", "Step Functions"])
 
 st.subheader("🤖 6.2 GenAI / ML Services")
 ml_services = st.multiselect("Select AI services:", ["Amazon Bedrock", "Amazon SageMaker", "Amazon Rekognition", "Amazon Textract", "Amazon Comprehend", "Amazon Transcribe", "Amazon Translate"], default=["Amazon Bedrock"])
 
 st.subheader("💾 6.3 Storage & Search")
 storage_services = st.multiselect("Select Storage & Search:", ["Amazon S3", "Amazon DynamoDB", "Amazon OpenSearch", "Amazon RDS", "Vector DB (OpenSearch)", "Vector DB (Aurora PG)"], default=["Amazon S3"])
+
+st.divider()
+
+# --- 7. Non-Functional Requirements ---
+st.header("⚙️ 7. Non-Functional Requirements")
+st.subheader("⚡ 7.1 Performance Expectations")
+perf_expectation = st.selectbox("Select expected performance profile:", ["Batch", "Near real-time", "Real-time"], index=1)
+
+st.subheader("🛡️ 7.2 Security & Compliance")
+sec_compliance = st.multiselect("Select security controls:", ["IAM-based access", "Encryption at rest", "Encryption in transit", "VPC deployment", "Audit logging", "Compliance alignment (RBI, SOC2, etc.)"], default=["IAM-based access", "Encryption at rest", "VPC deployment"])
 
 # --- GENERATION ---
 if st.button("✨ Generate SOW Document", type="primary", use_container_width=True):
@@ -535,58 +546,68 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             for dt, val in data_details.items():
                 data_context += f"- **{dt}**: " + ", ".join([f"{k}: {v}" for k, v in val.items()]) + "\n"
 
+            # --- REFINED AI PROMPT ---
             prompt_text = f"""
-            Generate a COMPLETE formal enterprise SOW for {selected_sow_name} in {final_industry}.
-            ENGAGEMENT TYPE: {engagement_type}
+            Generate a COMPLETE, high-quality formal enterprise SOW for {selected_sow_name} in the {final_industry} industry.
             
-            STRICT SECTION FLOW (Use exactly these numbers and headers):
+            PROJECT PARAMETERS:
+            - Engagement Type: {engagement_type}
+            - Timeline: {duration}
+            
+            STRICT SECTION FLOW (USE THESE EXACT HEADERS AND NUMBERS):
             1 TABLE OF CONTENTS
             2 PROJECT OVERVIEW
               2.1 OBJECTIVE: {objective}
-              2.2 PROJECT TEAM:
-                  ### Partner Executive Sponsor
+              2.2 PROJECT TEAM (Include Partner, Customer, and Escalation tables):
                   {get_md(st.session_state.stakeholders["Partner"])}
-                  ### Customer Executive Sponsor
                   {get_md(st.session_state.stakeholders["Customer"])}
-                  ### Project Escalation Contacts
                   {get_md(st.session_state.stakeholders["Escalation"])}
-              2.3 PROJECT SUCCESS CRITERIA: {', '.join(outcomes)}
-            3 SCOPE OF WORK - TECHNICAL PROJECT PLAN
-              3.1 CUSTOMER DEPENDENCIES
-                  Expand into formal dependency statements:
-                  {dep_context if selected_deps else "- General data and SME availability."}
-              3.2 DATA CHARACTERISTICS & ARCHITECTURAL ASSUMPTIONS
-                  Integrate these data technicalities:
-                  {data_context if data_context else "- Standard text-based documents."}
-              3.3 KEY ASSUMPTIONS
-                  Formalize these project assumptions:
-                  {as_context if selected_assumps else "- Standard agile delivery assumptions."}
+              2.3 PROJECT SUCCESS CRITERIA (Select from): {', '.join(outcomes)}
+            3 SCOPE OF WORK
+              3.1 CUSTOMER DEPENDENCIES:
+                  Expand these into professional dependency statements:
+                  {dep_context if selected_deps else "Standard data and SME availability."}
+              3.2 DATA CHARACTERISTICS & ARCHITECTURAL ASSUMPTIONS:
+                  Incorporate these technical details into the plan:
+                  {data_context if data_context else "Standard text-based documents."}
+              3.3 KEY ASSUMPTIONS:
+                  Formalize these project constraints:
+                  {as_context if selected_assumps else "Standard delivery assumptions."}
             4 POC SUCCESS CRITERIA
-              Based on Success Dimensions: {', '.join(selected_dims)}
-              Validation Requirement: {val_req}
-              - Generate specific, measurable success criteria. 
+              - Generate specific, measurable KPIs based on Dimensions: {', '.join(selected_dims)}.
+              - Example for Accuracy: ">=85% precision on test dataset".
+              - User Validation Requirement: {val_req}.
             5 SCOPE OF WORK – FUNCTIONAL CAPABILITIES
-              Core Flows: {', '.join(selected_caps)}
-              Integrations: {', '.join(selected_ints)}
-              - Convert these selected flows and integrations into a formal, structured Scope of Work section.
-            6 SOLUTION ARCHITECTURE / ARCHITECTURAL DIAGRAM
+              - Formalize the following selected core flows into technical requirements: {', '.join(selected_caps)}.
+              - Detail the integration with: {', '.join(selected_ints)}.
+            6 SOLUTION ARCHITECTURE
+              - Placeholder: "Specifics to be discussed basis POC". (Diagram will be inserted here).
             7 ARCHITECTURE & AWS SERVICES
-              Compute: {compute_option}
-              AI Services: {', '.join(ml_services)}
-              Storage & Search: {', '.join(storage_services)}
-              - Provide formal architectural descriptions for these AWS services.
-              - Detail how these services work together to fulfill the scope.
-            8 COST ESTIMATION TABLE
-            9 RESOURCES & COST ESTIMATES
+              - Detail the role and implementation of:
+                * Compute: {', '.join(compute_option)}
+                * AI/ML Services: {', '.join(ml_services)}
+                * Storage/Search: {', '.join(storage_services)}
+            8 NON-FUNCTIONAL REQUIREMENTS
+              - Performance Expectation: {perf_expectation} (Detail what this means for latency and throughput).
+              - Security & Compliance: {', '.join(sec_compliance)} (Describe the implementation of these controls).
+            9 COST ESTIMATION TABLE
+              - Provide only this table:
+              {dynamic_table_prompt}
+            10 RESOURCES & COST ESTIMATES
 
-            RULES:
-            - Engagement type '{engagement_type}' drives scope depth and criteria strictness.
-            - Section 6: ONLY "Specifics to be discussed basis POC".
-            - Section 8: {dynamic_table_prompt}
-            - No markdown bolding (**). No introductory fluff.
-            - Use the exact section numbers (1 through 9) as defined in the flow.
+            INSTRUCTIONS:
+            - The Engagement Type '{engagement_type}' must drive the 'Depth of Scope' and 'Strictness of Criteria'.
+            - If Engagement is 'PoC', focus on technical feasibility. If 'Production', focus on scalability and SLAs.
+            - Do not use markdown bolding (**). Use section numbers and standard paragraph text.
+            - Maintain an enterprise solutions architect tone.
             """
-            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt_text}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering. Page 1 cover, Page 2 TOC, Page 3 Overview. Create detailed, measurable criteria, functional scope, and architecture details based on user inputs."}]}})
+
+            payload = {
+                "contents": [{"parts": [{"text": prompt_text}]}], 
+                "systemInstruction": {"parts": [{"text": f"You are a professional AWS Solutions Architect. Follow the numbering 1 to 10 exactly. Start with '1 TABLE OF CONTENTS'. No repetition. Current context: {engagement_type}."}]}
+            }
+            
+            res, err = call_gemini_with_retry(api_key, payload)
             if res:
                 st.session_state.generated_sow = res.json()['candidates'][0]['content']['parts'][0]['text']
                 st.balloons()
@@ -604,7 +625,7 @@ if st.session_state.generated_sow:
         calc_url_p = CALCULATOR_LINKS.get(selected_sow_name, "https://calculator.aws")
         preview_content = st.session_state.generated_sow.replace("Estimate", f'<a href="{calc_url_p}" target="_blank" style="color:#3b82f6; text-decoration: underline;">Estimate</a>')
         
-        # Look for Section 6 (Architecture) now shifted
+        # Match section 6 for diagram injection
         match = re.search(r'(?i)(^#*\s*6\s+SOLUTION ARCHITECTURE.*)', preview_content, re.MULTILINE)
         if match:
             start, end = match.span(); st.markdown(preview_content[:end], unsafe_allow_html=True)
