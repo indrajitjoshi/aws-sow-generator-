@@ -361,7 +361,17 @@ st.header("📋 3. Assumptions & Data (Semi-Structured)")
 
 # 3.1 Customer Dependencies
 st.subheader("🔗 3.1 Customer Dependencies")
-dep_options = ["Sample data availability", "Historical data availability", "Design / business guidelines finalized", "API access provided", "User access to AWS account", "SME availability for validation", "Network / VPC access", "Security approvals"]
+st.write("Select all that apply:")
+dep_options = [
+    "Sample data availability", 
+    "Historical data availability", 
+    "Design / business guidelines finalized", 
+    "API access provided", 
+    "User access to AWS account", 
+    "SME availability for validation", 
+    "Network / VPC access", 
+    "Security approvals"
+]
 selected_deps = []
 cols_dep = st.columns(2)
 for idx, opt in enumerate(dep_options):
@@ -378,26 +388,44 @@ if data_types:
             col1, col2, col3 = st.columns(3)
             if dtype == "Images":
                 sz = col1.text_input("Avg size (MB)", "2 MB", key="img_sz")
-                fmt = col2.text_input("Formats", "JPEG, PNG", key="img_fmt")
-                vol = col3.text_input("Approx volume", "1000 total", key="img_vol")
-                data_details[dtype] = {"Size": sz, "Format": fmt, "Volume": vol}
+                fmt = col2.text_input("Formats (JPEG/PNG/etc.)", "JPEG, PNG", key="img_fmt")
+                vol = col3.text_input("Approx volume (per day / total)", "1000 total", key="img_vol")
+                data_details[dtype] = {"Avg Size": sz, "Formats": fmt, "Volume": vol}
             elif dtype == "PDFs / Documents":
-                pg = col1.text_input("Avg Page Count", "10", key="pdf_pg")
-                vol = col2.text_input("Volume / Month", "500 docs", key="pdf_vol")
-                fmt = col3.text_input("Searchable?", "OCR Required", key="pdf_ocr")
-                data_details[dtype] = {"Pages": pg, "Volume": vol, "OCR": fmt}
+                sz = col1.text_input("Avg size (MB)", "5 MB", key="pdf_sz")
+                fmt = col2.text_input("Formats", "PDF, DOCX", key="pdf_fmt")
+                vol = col3.text_input("Approx volume (per day / total)", "500 total", key="pdf_vol")
+                data_details[dtype] = {"Avg Size": sz, "Formats": fmt, "Volume": vol}
             elif dtype == "Text":
-                vol = col1.text_input("Total volume", "50 MB", key="txt_vol")
-                src = col2.text_input("Source", "DB / Local", key="txt_src")
-                data_details[dtype] = {"Volume": vol, "Source": src}
+                sz = col1.text_input("Avg size (KB/MB)", "100 KB", key="txt_sz")
+                fmt = col2.text_input("Formats", "TXT, JSON, CSV", key="txt_fmt")
+                vol = col3.text_input("Approx volume (per day / total)", "10,000 records", key="txt_vol")
+                data_details[dtype] = {"Avg Size": sz, "Formats": fmt, "Volume": vol}
+            elif dtype == "Audio":
+                sz = col1.text_input("Avg size (MB)", "10 MB", key="aud_sz")
+                fmt = col2.text_input("Formats", "MP3, WAV", key="aud_fmt")
+                vol = col3.text_input("Approx volume", "100 hours", key="aud_vol")
+                data_details[dtype] = {"Avg Size": sz, "Formats": fmt, "Volume": vol}
+            elif dtype == "Video":
+                sz = col1.text_input("Avg size (MB/GB)", "500 MB", key="vid_sz")
+                fmt = col2.text_input("Formats", "MP4, MKV", key="vid_fmt")
+                vol = col3.text_input("Approx volume", "50 clips", key="vid_vol")
+                data_details[dtype] = {"Avg Size": sz, "Formats": fmt, "Volume": vol}
             else:
-                vol = col1.text_input("Approx volume", "TBD", key=f"gen_vol_{dtype}")
+                sz = col1.text_input("Avg size", "TBD", key=f"gen_sz_{dtype}")
                 fmt = col2.text_input("Formats / Specs", "TBD", key=f"gen_fmt_{dtype}")
-                data_details[dtype] = {"Volume": vol, "Specs": fmt}
+                vol = col3.text_input("Approx volume", "TBD", key=f"gen_vol_{dtype}")
+                data_details[dtype] = {"Avg Size": sz, "Formats": fmt, "Volume": vol}
 
 # 3.3 Key Assumptions
 st.subheader("💡 3.3 Key Assumptions")
-assump_options = ["PoC only, not production-grade", "Limited data volume", "Rule-based logic acceptable initially", "Manual review for edge cases", "No real-time SLA commitments"]
+assump_options = [
+    "PoC only, not production-grade", 
+    "Limited data volume", 
+    "Rule-based logic acceptable initially", 
+    "Manual review for edge cases", 
+    "No real-time SLA commitments"
+]
 selected_assumps = []
 cols_as = st.columns(2)
 for idx, opt in enumerate(assump_options):
@@ -424,7 +452,7 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             as_context = "\n".join([f"- {a}" for a in selected_assumps])
             data_context = ""
             for dt, val in data_details.items():
-                data_context += f"- {dt}: {', '.join([f'{k}: {v}' for k, v in val.items()])}\n"
+                data_context += f"- **{dt}**: " + ", ".join([f"{k}: {v}" for k, v in val.items()]) + "\n"
 
             prompt_text = f"""
             Generate a COMPLETE formal enterprise SOW for {selected_sow_name} in {final_industry}.
@@ -442,27 +470,27 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
                   ### Project Escalation Contacts
                   {get_md(st.session_state.stakeholders["Escalation"])}
               2.3 PROJECT SUCCESS CRITERIA: {', '.join(outcomes)}
-              2.4 CUSTOMER DEPENDENCIES
-                  Expand the following selected items into formal, detailed statements:
-                  {dep_context if selected_deps else "- General data and SME availability."}
-              2.5 DATA CHARACTERISTICS & ASSUMPTIONS
-                  Integrate these data technicalities into the project plan and bedrock usage assumptions:
-                  {data_context if data_context else "- Standard text-based documents."}
-              2.6 KEY ASSUMPTIONS
-                  Formalize these project assumptions:
-                  {as_context if selected_assumps else "- Standard agile delivery assumptions."}
             3 SCOPE OF WORK - TECHNICAL PROJECT PLAN
+              3.1 CUSTOMER DEPENDENCIES
+                  Expand the following selected items into formal, detailed enterprise dependency statements:
+                  {dep_context if selected_deps else "- General data and SME availability."}
+              3.2 DATA CHARACTERISTICS & ARCHITECTURAL ASSUMPTIONS
+                  Integrate these data technicalities into the project plan, architecture, and Bedrock usage assumptions:
+                  {data_context if data_context else "- Standard text-based documents."}
+              3.3 KEY ASSUMPTIONS
+                  Formalize these project assumptions into legal/professional SOW language:
+                  {as_context if selected_assumps else "- Standard agile delivery assumptions."}
             4 SOLUTION ARCHITECTURE / ARCHITECTURAL DIAGRAM
             5 COST ESTIMATION TABLE
             6 RESOURCES & COST ESTIMATES
 
             RULES:
-            - Engagement type '{engagement_type}' drives scope depth and criteria strictness.
+            - Engagement type '{engagement_type}' drives the depth of scope, strictness of success criteria, and cost modeling assumptions.
             - Section 4: ONLY "Specifics to be discussed basis POC".
             - Section 5: {dynamic_table_prompt}
             - No markdown bolding (**). No introductory fluff.
             """
-            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt_text}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering. Page 1 cover, Page 2 TOC, Page 3 Overview."}]}})
+            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt_text}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering. Page 1 cover, Page 2 TOC, Page 3 Overview. Use the user's specific data characteristics and assumptions to tailor the scope depth."}]}})
             if res:
                 st.session_state.generated_sow = res.json()['candidates'][0]['content']['parts'][0]['text']
                 st.balloons()
