@@ -189,8 +189,8 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     doc = Document()
     
-    # Render sections tracking (1-10)
-    rendered_sections = {str(i): False for i in range(1, 11)}
+    # Render sections tracking (1-11)
+    rendered_sections = {str(i): False for i in range(1, 12)}
     
     # --- PAGE 1: COVER PAGE ---
     p_top = doc.add_paragraph()
@@ -252,8 +252,9 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
         "6": "6 SOLUTION ARCHITECTURE", 
         "7": "7 ARCHITECTURE & AWS SERVICES",
         "8": "8 NON-FUNCTIONAL REQUIREMENTS",
-        "9": "9 COST ESTIMATION TABLE", 
-        "10": "10 RESOURCES & COST ESTIMATES"
+        "9": "9 TIMELINE & PHASING",
+        "10": "10 COST ESTIMATION TABLE", 
+        "11": "11 RESOURCES & COST ESTIMATES"
     }
     
     while i < len(lines):
@@ -301,14 +302,14 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
                         cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 
                 # Cost table logic
-                if current_header_id == "9": 
+                if current_header_id == "10": 
                     add_infra_cost_table(doc, sow_type_name, text_content)
             i += 1; continue
             
         # Table Processing
         if line.startswith('|') and i + 1 < len(lines) and lines[i+1].strip().startswith('|'):
-            # Resources logic shifted to section 10
-            if rendered_sections["9"] and not rendered_sections["10"]: i += 1; continue
+            # Resources logic shifted to section 11
+            if rendered_sections["10"] and not rendered_sections["11"]: i += 1; continue
             table_lines = []
             while i < len(lines) and lines[i].strip().startswith('|'):
                 table_lines.append(lines[i]); i += 1
@@ -334,7 +335,7 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
             p = doc.add_paragraph(clean_text[2:] if (clean_text.startswith('- ') or clean_text.startswith('* ')) else clean_text, style="List Bullet")
             if in_toc_section: p.paragraph_format.left_indent = Inches(0.4)
         else:
-            if "ARCHITECTURE DIAGRAM" in upper_text and rendered_sections["6"] and not rendered_sections["9"]: i += 1; continue
+            if "ARCHITECTURE DIAGRAM" in upper_text and rendered_sections["6"] and not rendered_sections["10"]: i += 1; continue
             p = doc.add_paragraph(clean_text)
             bold_kw = ["PARTNER EXECUTIVE SPONSOR", "CUSTOMER EXECUTIVE SPONSOR", "AWS EXECUTIVE SPONSOR", "PROJECT ESCALATION CONTACTS", "ASSUMPTIONS:", "DEPENDENCIES:", "ASSUMPTIONS (", "DEPENDENCIES ("]
             if any(k in upper_text for k in bold_kw) and p.runs: p.runs[0].bold = True
@@ -364,6 +365,14 @@ if 'stakeholders' not in st.session_state:
         "Escalation": pd.DataFrame([{"Name": "Omkar Dhavalikar", "Title": "AI/ML Lead", "Email": "omkar.dhavalikar@oneture.com"}, {"Name": "Gaurav Kankaria", "Title": "Head of Analytics and AIML", "Email": "gaurav.kankaria@oneture.com"}])
     }
 
+if 'timeline_phases' not in st.session_state:
+    st.session_state.timeline_phases = pd.DataFrame([
+        {"Phase": "Infra setup", "Week Range": "Week 1"},
+        {"Phase": "Core workflows", "Week Range": "Week 2 - 3"},
+        {"Phase": "Testing & validation", "Week Range": "Week 3 - 4"},
+        {"Phase": "Demo & feedback", "Week Range": "Week 4"}
+    ])
+
 def clear_sow(): st.session_state.generated_sow = ""
 
 # --- SIDEBAR: PROJECT INTAKE ---
@@ -380,7 +389,7 @@ with st.sidebar:
     industry_options = ["Retail / E-commerce", "BFSI", "Manufacturing", "Telecom", "Healthcare", "Energy / Utilities", "Logistics", "Media", "Government", "Other (specify)"]
     industry_type = st.selectbox("1.3 Industry / Domain", industry_options)
     final_industry = st.text_input("Specify Industry", placeholder="Enter industry...") if industry_type == "Other (specify)" else industry_type
-    duration = st.text_input("1.4 Timeline / Duration", "4 Weeks")
+    
     if st.button("🗑️ Reset All Fields", on_click=clear_sow, use_container_width=True): st.rerun()
 
 # --- MAIN UI ---
@@ -527,6 +536,21 @@ perf_expectation = st.selectbox("Select expected performance profile:", ["Batch"
 st.subheader("🛡️ 7.2 Security & Compliance")
 sec_compliance = st.multiselect("Select security controls:", ["IAM-based access", "Encryption at rest", "Encryption in transit", "VPC deployment", "Audit logging", "Compliance alignment (RBI, SOC2, etc.)"], default=["IAM-based access", "Encryption at rest", "VPC deployment"])
 
+st.divider()
+
+# --- 8. Timeline & Phasing ---
+st.header("📅 8. Timeline & Phasing")
+st.subheader("⌛ 8.1 PoC Duration")
+poc_duration = st.selectbox("Select PoC duration:", ["2 weeks", "4 weeks", "6 weeks", "Custom"], index=1)
+if poc_duration == "Custom":
+    final_duration = st.text_input("Specify Duration:", "8 weeks")
+else:
+    final_duration = poc_duration
+
+st.subheader("📈 8.2 Phase Breakdown")
+st.write("Edit week mapping as needed:")
+st.session_state.timeline_phases = st.data_editor(st.session_state.timeline_phases, num_rows="dynamic", use_container_width=True, key="ed_timeline")
+
 # --- GENERATION ---
 if st.button("✨ Generate SOW Document", type="primary", use_container_width=True):
     if not api_key: st.warning("⚠️ Enter Gemini API Key.")
@@ -552,7 +576,7 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             
             PROJECT PARAMETERS:
             - Engagement Type: {engagement_type}
-            - Timeline: {duration}
+            - Overall Timeline: {final_duration}
             
             STRICT SECTION FLOW (USE THESE EXACT HEADERS AND NUMBERS):
             1 TABLE OF CONTENTS
@@ -590,10 +614,13 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             8 NON-FUNCTIONAL REQUIREMENTS
               - Performance Expectation: {perf_expectation} (Detail what this means for latency and throughput).
               - Security & Compliance: {', '.join(sec_compliance)} (Describe the implementation of these controls).
-            9 COST ESTIMATION TABLE
+            9 TIMELINE & PHASING
+              - Document the following phase breakdown in a formal project schedule:
+              {get_md(st.session_state.timeline_phases)}
+            10 COST ESTIMATION TABLE
               - Provide only this table:
               {dynamic_table_prompt}
-            10 RESOURCES & COST ESTIMATES
+            11 RESOURCES & COST ESTIMATES
 
             INSTRUCTIONS:
             - The Engagement Type '{engagement_type}' must drive the 'Depth of Scope' and 'Strictness of Criteria'.
@@ -604,7 +631,7 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
 
             payload = {
                 "contents": [{"parts": [{"text": prompt_text}]}], 
-                "systemInstruction": {"parts": [{"text": f"You are a professional AWS Solutions Architect. Follow the numbering 1 to 10 exactly. Start with '1 TABLE OF CONTENTS'. No repetition. Current context: {engagement_type}."}]}
+                "systemInstruction": {"parts": [{"text": f"You are a professional AWS Solutions Architect. Follow the numbering 1 to 11 exactly. Start with '1 TABLE OF CONTENTS'. No repetition. Current context: {engagement_type}."}]}
             }
             
             res, err = call_gemini_with_retry(api_key, payload)
