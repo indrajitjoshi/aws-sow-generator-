@@ -189,8 +189,8 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     doc = Document()
     
-    # Render sections tracking
-    rendered_sections = {"1": False, "2": False, "3": False, "4": False, "5": False, "6": False, "7": False}
+    # Render sections tracking (1-8)
+    rendered_sections = {str(i): False for i in range(1, 9)}
     
     # --- PAGE 1: COVER PAGE ---
     p_top = doc.add_paragraph()
@@ -248,9 +248,10 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
         "2": "2 PROJECT OVERVIEW", 
         "3": "3 SCOPE OF WORK", 
         "4": "4 POC SUCCESS CRITERIA",
-        "5": "5 SOLUTION ARCHITECTURE", 
-        "6": "6 COST ESTIMATION TABLE", 
-        "7": "7 RESOURCES & COST ESTIMATES"
+        "5": "5 SCOPE OF WORK – FUNCTIONAL CAPABILITIES",
+        "6": "6 SOLUTION ARCHITECTURE", 
+        "7": "7 COST ESTIMATION TABLE", 
+        "8": "8 RESOURCES & COST ESTIMATES"
     }
     
     while i < len(lines):
@@ -263,12 +264,10 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
         clean_text = re.sub(r'^#+\s*', '', line_clean).strip()
         upper_text = clean_text.upper()
         
-        # Robust Header Detection (Handles "1.", "1 ", etc.)
+        # Robust Header Detection
         current_header_id = None
         for h_id, pattern in header_patterns.items():
-            # Get the core title part (e.g., "TABLE OF CONTENTS")
             core_title = pattern.split(' ', 1)[1]
-            # Match if line starts with "{id} {Title}" or "{id}. {Title}"
             if upper_text.startswith(f"{h_id} {core_title}") or upper_text.startswith(f"{h_id}. {core_title}"):
                 current_header_id = h_id
                 break
@@ -277,15 +276,11 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
         if any(kw in upper_text for kw in ["PLACEHOLDER FOR COST TABLE", "SPECIFICS TO BE DISCUSSED BASIS POC"]):
             i += 1; continue
             
-        # Ensure content starts with TOC
         if not content_started:
-            if current_header_id == "1": 
-                content_started = True
-            else: 
-                i += 1; continue
+            if current_header_id == "1": content_started = True
+            else: i += 1; continue
         
         if current_header_id:
-            # Handle page breaks for TOC and Overview
             if in_toc_section and current_header_id == "2":
                 in_toc_section = False; doc.add_page_break()
             
@@ -295,20 +290,23 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
                 
                 if current_header_id == "1": in_toc_section = True
                 
-                # Insert dynamic assets/tables
-                if current_header_id == "5":
+                # Architecture Diagram logic shifted to section 6
+                if current_header_id == "6":
                     diag = SOW_DIAGRAM_MAP.get(sow_type_name)
                     if diag and os.path.exists(diag):
                         doc.add_paragraph(""); doc.add_picture(diag, width=Inches(6.0))
                         cap = doc.add_paragraph(f"{sow_type_name} – Architecture Diagram")
                         cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                if current_header_id == "6": 
+                
+                # Cost table logic shifted to section 7
+                if current_header_id == "7": 
                     add_infra_cost_table(doc, sow_type_name, text_content)
             i += 1; continue
             
         # Table Processing
         if line.startswith('|') and i + 1 < len(lines) and lines[i+1].strip().startswith('|'):
-            if rendered_sections["6"] and not rendered_sections["7"]: i += 1; continue
+            # Resources logic shifted to section 8
+            if rendered_sections["7"] and not rendered_sections["8"]: i += 1; continue
             table_lines = []
             while i < len(lines) and lines[i].strip().startswith('|'):
                 table_lines.append(lines[i]); i += 1
@@ -334,7 +332,7 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
             p = doc.add_paragraph(clean_text[2:] if (clean_text.startswith('- ') or clean_text.startswith('* ')) else clean_text, style="List Bullet")
             if in_toc_section: p.paragraph_format.left_indent = Inches(0.4)
         else:
-            if "ARCHITECTURE DIAGRAM" in upper_text and rendered_sections["5"] and not rendered_sections["6"]: i += 1; continue
+            if "ARCHITECTURE DIAGRAM" in upper_text and rendered_sections["6"] and not rendered_sections["7"]: i += 1; continue
             p = doc.add_paragraph(clean_text)
             bold_kw = ["PARTNER EXECUTIVE SPONSOR", "CUSTOMER EXECUTIVE SPONSOR", "AWS EXECUTIVE SPONSOR", "PROJECT ESCALATION CONTACTS", "ASSUMPTIONS:", "DEPENDENCIES:", "ASSUMPTIONS (", "DEPENDENCIES ("]
             if any(k in upper_text for k in bold_kw) and p.runs: p.runs[0].bold = True
@@ -485,6 +483,25 @@ selected_dims = st.multiselect("Dimensions:", success_dim_options, default=["Acc
 st.subheader("✅ 4.2 User Validation Requirement")
 val_req = st.radio("Customer validation requirement:", ["Yes – customer validation required", "No – internal validation sufficient"])
 
+st.divider()
+
+# --- 5. Scope of Work – Functional Capabilities ---
+st.header("🛠️ 5. Scope of Work – Functional Capabilities")
+st.subheader("⚙️ 5.1 Core Capabilities")
+st.write("Select project flows to include:")
+cap_options = ["Upload / Ingestion", "Processing / Inference", "Metadata extraction", "Scoring / Recommendation", "Feedback loop", "UI display"]
+selected_caps = []
+cols_cap = st.columns(2)
+for idx, opt in enumerate(cap_options):
+    if cols_cap[idx % 2].checkbox(opt, value=True, key=f"cap_{idx}"):
+        selected_caps.append(opt)
+custom_step = st.text_input("Add custom step (Optional):", placeholder="e.g., Automated reporting module...")
+if custom_step: selected_caps.append(custom_step)
+
+st.subheader("🔗 5.2 Integrations Required")
+int_options = ["Internal databases", "External APIs", "CRM", "ERP", "Search engine", "Data warehouse", "None"]
+selected_ints = st.multiselect("Select systems to integrate:", int_options, default=["None"])
+
 # --- GENERATION ---
 if st.button("✨ Generate SOW Document", type="primary", use_container_width=True):
     if not api_key: st.warning("⚠️ Enter Gemini API Key.")
@@ -534,19 +551,22 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
               Based on Success Dimensions: {', '.join(selected_dims)}
               Validation Requirement: {val_req}
               - Generate specific, measurable success criteria. 
-              - Example: "≥85% match with manual reviewer outcomes".
-            5 SOLUTION ARCHITECTURE / ARCHITECTURAL DIAGRAM
-            6 COST ESTIMATION TABLE
-            7 RESOURCES & COST ESTIMATES
+            5 SCOPE OF WORK – FUNCTIONAL CAPABILITIES
+              Core Flows: {', '.join(selected_caps)}
+              Integrations: {', '.join(selected_ints)}
+              - Convert these selected flows and integrations into a formal, structured Scope of Work section.
+            6 SOLUTION ARCHITECTURE / ARCHITECTURAL DIAGRAM
+            7 COST ESTIMATION TABLE
+            8 RESOURCES & COST ESTIMATES
 
             RULES:
             - Engagement type '{engagement_type}' drives scope depth and criteria strictness.
-            - Section 5: ONLY "Specifics to be discussed basis POC".
-            - Section 6: {dynamic_table_prompt}
+            - Section 6: ONLY "Specifics to be discussed basis POC".
+            - Section 7: {dynamic_table_prompt}
             - No markdown bolding (**). No introductory fluff.
-            - Use the exact section numbers (1 through 7) as defined in the flow.
+            - Use the exact section numbers (1 through 8) as defined in the flow.
             """
-            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt_text}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering. Page 1 cover, Page 2 TOC, Page 3 Overview. Create detailed and measurable criteria based on user inputs."}]}})
+            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt_text}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering. Page 1 cover, Page 2 TOC, Page 3 Overview. Create detailed, measurable criteria and functional scope based on user inputs."}]}})
             if res:
                 st.session_state.generated_sow = res.json()['candidates'][0]['content']['parts'][0]['text']
                 st.balloons()
@@ -564,8 +584,8 @@ if st.session_state.generated_sow:
         calc_url_p = CALCULATOR_LINKS.get(selected_sow_name, "https://calculator.aws")
         preview_content = st.session_state.generated_sow.replace("Estimate", f'<a href="{calc_url_p}" target="_blank" style="color:#3b82f6; text-decoration: underline;">Estimate</a>')
         
-        # Look for Section 5 (Architecture)
-        match = re.search(r'(?i)(^#*\s*5\s+SOLUTION ARCHITECTURE.*)', preview_content, re.MULTILINE)
+        # Look for Section 6 (Architecture) now shifted
+        match = re.search(r'(?i)(^#*\s*6\s+SOLUTION ARCHITECTURE.*)', preview_content, re.MULTILINE)
         if match:
             start, end = match.span(); st.markdown(preview_content[:end], unsafe_allow_html=True)
             diag_out = SOW_DIAGRAM_MAP.get(selected_sow_name)
