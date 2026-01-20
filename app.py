@@ -399,7 +399,7 @@ if data_types:
             elif dtype == "Text":
                 sz = col1.text_input("Avg size (KB/MB)", "100 KB", key="txt_sz")
                 fmt = col2.text_input("Formats", "TXT, JSON, CSV", key="txt_fmt")
-                vol = col3.text_input("Approx volume (per day / total)", "10,000 records", key="txt_vol")
+                vol = col3.text_input("Approx volume (per day / total)", "10,00,0 records", key="txt_vol")
                 data_details[dtype] = {"Avg Size": sz, "Formats": fmt, "Volume": vol}
             elif dtype == "Audio":
                 sz = col1.text_input("Avg size (MB)", "10 MB", key="aud_sz")
@@ -434,6 +434,26 @@ for idx, opt in enumerate(assump_options):
 other_assump = st.text_input("Other (Free text)", placeholder="Enter any other project assumptions...")
 if other_assump: selected_assumps.append(other_assump)
 
+st.divider()
+
+# --- NEW SECTION: 4. PoC Success Criteria ---
+st.header("🎯 4. PoC Success Criteria")
+st.subheader("📊 4.1 Success Dimensions")
+st.write("Select all that apply:")
+success_dim_options = [
+    "Accuracy", 
+    "Latency", 
+    "Usability", 
+    "Explainability", 
+    "Coverage", 
+    "Cost efficiency", 
+    "Integration readiness"
+]
+selected_dims = st.multiselect("Dimensions:", success_dim_options, default=["Accuracy", "Cost efficiency"])
+
+st.subheader("✅ 4.2 User Validation Requirement")
+val_req = st.radio("Customer validation required?", ["Yes – customer validation required", "No – internal validation sufficient"])
+
 # --- GENERATION ---
 if st.button("✨ Generate SOW Document", type="primary", use_container_width=True):
     if not api_key: st.warning("⚠️ Enter Gemini API Key.")
@@ -447,7 +467,7 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
                 label = "POC" if k=="poc_cost" else "Production" if k=="prod_cost" else "Bedrock" if k=="amazon_bedrock" else "Total"
                 dynamic_table_prompt += f"| {label} | {v} | Estimate |\n"
 
-            # Context construction for structured assumptions/dependencies
+            # Context construction
             dep_context = "\n".join([f"- {d}" for d in selected_deps])
             as_context = "\n".join([f"- {a}" for a in selected_assumps])
             data_context = ""
@@ -472,25 +492,34 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
               2.3 PROJECT SUCCESS CRITERIA: {', '.join(outcomes)}
             3 SCOPE OF WORK - TECHNICAL PROJECT PLAN
               3.1 CUSTOMER DEPENDENCIES
-                  Expand the following selected items into formal, detailed enterprise dependency statements:
+                  Expand into formal dependency statements:
                   {dep_context if selected_deps else "- General data and SME availability."}
               3.2 DATA CHARACTERISTICS & ARCHITECTURAL ASSUMPTIONS
-                  Integrate these data technicalities into the project plan, architecture, and Bedrock usage assumptions:
+                  Integrate these data technicalities:
                   {data_context if data_context else "- Standard text-based documents."}
               3.3 KEY ASSUMPTIONS
-                  Formalize these project assumptions into legal/professional SOW language:
+                  Formalize these project assumptions:
                   {as_context if selected_assumps else "- Standard agile delivery assumptions."}
             4 SOLUTION ARCHITECTURE / ARCHITECTURAL DIAGRAM
             5 COST ESTIMATION TABLE
             6 RESOURCES & COST ESTIMATES
 
+            SPECIAL INSTRUCTIONS FOR SUCCESS CRITERIA:
+            Based on selected Success Dimensions: {', '.join(selected_dims)}
+            Validation Requirement: {val_req}
+            
+            - GENERATE MEASURABLE SUCCESS CRITERIA tailored to {selected_sow_name}.
+            - Example: For Image Inspection, criteria should be like '≥85% match with manual reviewer outcomes'.
+            - Ensure criteria are specific, measurable, and relevant to the selected dimensions.
+            - Explicitly mention that customer validation is required if requested.
+
             RULES:
-            - Engagement type '{engagement_type}' drives the depth of scope, strictness of success criteria, and cost modeling assumptions.
+            - Engagement type '{engagement_type}' drives scope depth and criteria strictness.
             - Section 4: ONLY "Specifics to be discussed basis POC".
             - Section 5: {dynamic_table_prompt}
             - No markdown bolding (**). No introductory fluff.
             """
-            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt_text}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering. Page 1 cover, Page 2 TOC, Page 3 Overview. Use the user's specific data characteristics and assumptions to tailor the scope depth."}]}})
+            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt_text}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering. Page 1 cover, Page 2 TOC, Page 3 Overview. Create highly detailed and measurable success criteria based on the user's choices."}]}})
             if res:
                 st.session_state.generated_sow = res.json()['candidates'][0]['content']['parts'][0]['text']
                 st.balloons()
