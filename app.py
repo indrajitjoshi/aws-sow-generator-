@@ -92,9 +92,8 @@ def add_hyperlink(paragraph, text, url):
     hyperlink.set(docx.oxml.shared.qn('r:id'), r_id, )
     new_run = docx.oxml.shared.OxmlElement('w:r')
     rPr = docx.oxml.shared.OxmlElement('w:rPr')
-    # Set to black instead of blue
     c = docx.oxml.shared.OxmlElement('w:color')
-    c.set(docx.oxml.shared.qn('w:val'), '000000')
+    c.set(docx.oxml.shared.qn('w:val'), '000000') # Black color
     u = docx.oxml.shared.OxmlElement('w:u')
     u.set(docx.oxml.shared.qn('w:val'), 'single')
     rPr.append(c); rPr.append(u); new_run.append(rPr)
@@ -119,49 +118,48 @@ def create_docx_logic(text_content, branding, sow_name):
     from docx import Document
     from docx.shared import Inches, Pt
     from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.oxml.shared import qn
     doc = Document()
     
-    # Global document style
+    # Global document style: Times New Roman, Black
     style = doc.styles['Normal']
     style.font.name = 'Times New Roman'
     style.font.size = Pt(11)
-    
+    # Necessary for some versions of Word to respect font name
+    r = style.element.xpath('.//w:rPr')[0]
+    r.append(docx.oxml.shared.OxmlElement('w:rFonts'))
+    r.find(qn('w:rFonts')).set(qn('w:ascii'), 'Times New Roman')
+    r.find(qn('w:rFonts')).set(qn('w:hAnsi'), 'Times New Roman')
+
     # Page 1 Cover
     p = doc.add_paragraph()
     if os.path.exists(AWS_PN_LOGO): doc.add_picture(AWS_PN_LOGO, width=Inches(1.6))
     doc.add_paragraph("\n" * 3)
     t = doc.add_paragraph(); t.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = t.add_run(branding['sow_name']); run.font.size = Pt(26); run.bold = True
+    run = t.add_run(branding['sow_name']); run.font.size = Pt(26); run.bold = True; run.font.name = 'Times New Roman'
     stitle = doc.add_paragraph(); stitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    stitle.add_run("Scope of Work Document").font.size = Pt(14)
+    run_s = stitle.add_run("Scope of Work Document"); run_s.font.size = Pt(14); run_s.font.name = 'Times New Roman'
     doc.add_paragraph("\n" * 4)
     
     l_table = doc.add_table(rows=1, cols=3); l_table.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    cell_customer = l_table.rows[0].cells[0]
     if branding.get("customer_logo_bytes"):
-        cell_customer.paragraphs[0].add_run().add_picture(io.BytesIO(branding["customer_logo_bytes"]), width=Inches(1.8))
-    else:
-        cell_customer.paragraphs[0].add_run("Customer Logo").bold = True
-        
-    cell_oneture = l_table.rows[0].cells[1]
+        l_table.rows[0].cells[0].paragraphs[0].add_run().add_picture(io.BytesIO(branding["customer_logo_bytes"]), width=Inches(1.8))
     if os.path.exists(ONETURE_LOGO):
-        cell_oneture.paragraphs[0].add_run().add_picture(ONETURE_LOGO, width=Inches(2.2))
-        
-    cell_aws = l_table.rows[0].cells[2]
+        l_table.rows[0].cells[1].paragraphs[0].add_run().add_picture(ONETURE_LOGO, width=Inches(2.2))
     if os.path.exists(AWS_ADV_LOGO):
-        cell_aws.paragraphs[0].add_run().add_picture(AWS_ADV_LOGO, width=Inches(1.8))
+        l_table.rows[0].cells[2].paragraphs[0].add_run().add_picture(AWS_ADV_LOGO, width=Inches(1.8))
     
     doc.add_paragraph("\n" * 3)
     dt = doc.add_paragraph(); dt.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    dt.add_run(branding["doc_date_str"]).bold = True
+    run_dt = dt.add_run(branding["doc_date_str"]); run_dt.bold = True; run_dt.font.name = 'Times New Roman'
     doc.add_page_break()
 
-    # Section Headers Mapping (All caps to match requested titles)
+    # Section Headers Mapping
     headers = {
         "1": "TABLE OF CONTENTS", "2": "PROJECT OVERVIEW", "3": "ASSUMPTIONS & DEPENDENCIES",
         "4": "POC SUCCESS CRITERIA", "5": "SCOPE OF WORK – FUNCTIONAL CAPABILITIES",
         "6": "SOLUTION ARCHITECTURE", "7": "ARCHITECTURE & AWS SERVICES",
-        "8": "NON-FUNCTIONAL REQUIREMENTS", "9": "TIMELINE & PHASING", "10": "FINAL OUTPUTS"
+        "8": "NON-FUNCTIONAL REQUIREMENTS", "9": "COSTING INPUTS", "10": "FINAL OUTPUTS"
     }
 
     lines = text_content.split('\n')
@@ -176,33 +174,32 @@ def create_docx_logic(text_content, branding, sow_name):
 
         current_id = None
         for h_id, h_title in headers.items():
+            # Match exactly capitalized titles as provided in headers map
             if re.match(rf"^{h_id}[\.\s]+{re.escape(h_title)}", upper):
                 current_id = h_id; break
         
         if current_id:
-            # Force page break after TOC table/content
+            # Force page break after TOC
             if in_toc and current_id == "2": 
                 doc.add_page_break()
                 in_toc = False
                 
             if not rendered[current_id]:
                 h = doc.add_heading(clean, level=1)
-                # Ensure heading font is also Times New Roman
-                for run in h.runs: run.font.name = 'Times New Roman'
+                for run in h.runs: 
+                    run.font.name = 'Times New Roman'
+                    run.font.color.rgb = docx.shared.RGBColor(0, 0, 0)
                 
                 rendered[current_id] = True
-                if current_id == "1": 
-                    in_toc = True
-                    
+                if current_id == "1": in_toc = True
+                
                 if current_id == "6":
                     diag = SOW_DIAGRAM_MAP.get(sow_name)
                     if diag and os.path.exists(diag):
                         doc.add_picture(diag, width=Inches(6.0))
-                        cap = doc.add_paragraph(f"{sow_name} – Architecture Diagram")
-                        cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                
-                if current_id == "9": # Timing logic placeholder
-                    pass
+                        p_diag = doc.add_paragraph(f"{sow_name} – Architecture Diagram")
+                        p_diag.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                        for run in p_diag.runs: run.font.name = 'Times New Roman'
             i += 1; continue
             
         if line.startswith('|') and i + 1 < len(lines) and lines[i+1].strip().startswith('|'):
@@ -212,26 +209,37 @@ def create_docx_logic(text_content, branding, sow_name):
             if len(table_lines) >= 3:
                 cols = [c.strip() for c in table_lines[0].split('|') if c.strip()]
                 t = doc.add_table(rows=1, cols=len(cols)); t.style = "Table Grid"
-                for idx, h_text in enumerate(cols): t.rows[0].cells[idx].text = h_text
+                for idx, h_text in enumerate(cols):
+                    cell_h = t.rows[0].cells[idx]
+                    p_h = cell_h.paragraphs[0]
+                    r_h = p_h.add_run(h_text); r_h.bold = True; r_h.font.name = 'Times New Roman'
                 for row_line in table_lines[2:]:
-                    cells = [c.strip() for c in row_line.split('|') if c.strip()]
-                    r_cells = t.add_row().cells
-                    for idx, c_text in enumerate(cells): 
-                        if idx < len(r_cells): r_cells[idx].text = c_text
+                    cells_data = [c.strip() for c in row_line.split('|') if c.strip()]
+                    r = t.add_row().cells
+                    for idx, c_text in enumerate(cells_data): 
+                        if idx < len(r): 
+                            p_r = r[idx].paragraphs[0]
+                            r_r = p_r.add_run(c_text); r_r.font.name = 'Times New Roman'
             continue
 
         if line.startswith('## '): 
             h = doc.add_heading(clean, level=2)
-            for run in h.runs: run.font.name = 'Times New Roman'
+            for run in h.runs: 
+                run.font.name = 'Times New Roman'
+                run.font.color.rgb = docx.shared.RGBColor(0, 0, 0)
         elif line.startswith('### '): 
             h = doc.add_heading(clean, level=3)
-            for run in h.runs: run.font.name = 'Times New Roman'
+            for run in h.runs: 
+                run.font.name = 'Times New Roman'
+                run.font.color.rgb = docx.shared.RGBColor(0, 0, 0)
         elif line.startswith('- ') or line.startswith('* '):
-            doc.add_paragraph(clean[2:], style="List Bullet")
+            p_b = doc.add_paragraph(style="List Bullet")
+            r_b = p_b.add_run(clean[2:]); r_b.font.name = 'Times New Roman'
         else:
-            p = doc.add_paragraph(clean)
+            p_n = doc.add_paragraph()
+            run_n = p_n.add_run(clean); run_n.font.name = 'Times New Roman'
             if any(k in upper for k in ["SPONSOR", "CONTACTS", "ASSUMPTIONS:", "DEPENDENCIES:"]):
-                if p.runs: p.runs[0].bold = True
+                run_n.bold = True
         i += 1
         
     bio = io.BytesIO(); doc.save(bio); return bio.getvalue()
@@ -250,6 +258,7 @@ def call_gemini_with_retry(api_key, payload):
 # --- INITIALIZATION ---
 if 'generated_sow' not in st.session_state: st.session_state.generated_sow = ""
 if 'stakeholders' not in st.session_state:
+    import pandas as pd
     st.session_state.stakeholders = {
         "Partner": pd.DataFrame([{"Name": "Gaurav Kankaria", "Title": "Head of Analytics & ML", "Email": "gaurav.kankaria@oneture.com"}]),
         "Customer": pd.DataFrame([{"Name": "Cheten Dev", "Title": "Head of Product Design", "Email": "cheten.dev@nykaa.com"}]),
@@ -300,7 +309,7 @@ st.header("2. Project Overview Section")
 st.subheader("🎯 2.1 Business Objective")
 biz_objective = st.text_area("What business problem is the customer trying to solve?", placeholder="Example: Reduce manual effort, improve accuracy, enable faster decision-making...", height=100)
 st.subheader("📈 2.2 Key Outcomes Expected")
-sel_outcomes = st.multiselect("Outcomes:", ["Reduce manual effort", "Improve accuracy / quality", "Faster turnaround time", "Cost reduction", "Revenue uplift", "Compliance improvement", "Better customer experience", "Scalability validation", "Other (specify)"], default=["Improve accuracy / quality", "Cost reduction"])
+sel_outcomes = st.multiselect("Select outcomes:", ["Reduce manual effort", "Improve accuracy / quality", "Faster turnaround time", "Cost reduction", "Revenue uplift", "Compliance improvement", "Better customer experience", "Scalability validation", "Other (specify)"], default=["Improve accuracy / quality", "Cost reduction"])
 
 st.subheader("👥 2.3 Stakeholders Information")
 st.markdown('<div class="stakeholder-header">Partner Executive Sponsor</div>', unsafe_allow_html=True)
@@ -320,12 +329,12 @@ dep_opts = ["Sample data availability", "Historical data availability", "Design 
 sel_deps = [opt for opt in dep_opts if st.checkbox(opt, key=f"dep_{opt}")]
 
 st.subheader("📊 3.2 Data Characteristics")
-data_types = st.multiselect("Data involved:", ["Images", "Text", "PDFs / Documents", "Audio", "Video", "Structured tables", "APIs / Streams"])
+data_types = st.multiselect("What type of data is involved?", ["Images", "Text", "PDFs / Documents", "Audio", "Video", "Structured tables", "APIs / Streams"])
 data_meta = {}
 for dt in data_types:
     with st.expander(f"⚙️ {dt} Details", expanded=True):
         c1, c2, c3 = st.columns(3)
-        data_meta[dt] = {"Size": c1.text_input(f"{dt} Size (MB)", "2 MB"), "Format": c2.text_input(f"{dt} Formats", "JPEG, PNG" if dt=="Images" else "PDF"), "Vol": c3.text_input(f"{dt} Volume", "100/day")}
+        data_meta[dt] = {"Size": c1.text_input(f"{dt} Avg Size (MB)", "2 MB"), "Format": c2.text_input(f"{dt} Formats", "JPEG, PNG" if dt=="Images" else "PDF"), "Vol": c3.text_input(f"{dt} Volume", "100/day")}
 
 st.subheader("💡 3.3 Key Assumptions")
 ass_opts = ["PoC only, not production-grade", "Limited data volume", "Rule-based logic acceptable initially", "Manual review for edge cases", "No real-time SLA commitments"]
@@ -355,8 +364,7 @@ st.divider()
 # --- 6. ARCHITECTURE & AWS SERVICES ---
 st.header("🏢 6. Architecture & AWS Services")
 st.subheader("🖥️ 6.1 Compute & Orchestration")
-# Now separate options
-compute = st.multiselect("Select Primary Compute:", ["AWS Lambda", "Step Functions", "ECS / EKS", "Hybrid"], default=["AWS Lambda", "Step Functions"])
+compute_choices = st.multiselect("Select Primary Compute:", ["AWS Lambda", "Step Functions", "Amazon ECS / EKS(future)", "Hybrid"], default=["AWS Lambda", "Step Functions"])
 
 st.subheader("🤖 6.2 GenAI / ML Services")
 ai_svcs = st.multiselect("AI Services:", ["Amazon Bedrock", "Amazon SageMaker", "Rekognition", "Textract", "Comprehend", "Transcribe", "Translate"], default=["Amazon Bedrock"])
@@ -414,13 +422,14 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
             - ALL SECTION TITLES MUST BE IN CAPITAL LETTERS (e.g., '10 FINAL OUTPUTS').
             - Start immediately with '1 TABLE OF CONTENTS'. No introductory text. No bolding (**).
             - Textual content must follow each heading immediately (Heading -> Content flow).
-            - Use a consistent professional tone.
+            - Use only Black text in the response.
+            - Provide detailed textual descriptions for every section.
             
             STRICT SECTION FLOW (1 to 10):
             1 TABLE OF CONTENTS
             2 PROJECT OVERVIEW
               - Business Objective: {biz_objective}
-              - Role Tables:
+              - Team Roles:
               ### Partner Executive Sponsor
               {get_md(st.session_state.stakeholders["Partner"])}
               ### Customer Executive Sponsor
@@ -436,24 +445,23 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
               3.3 Key Assumptions: {', '.join(sel_ass)} {custom_ass}
             4 POC SUCCESS CRITERIA
               Dimensions: {', '.join(sel_dims)}. Validation: {val_req}
-              - Provide specific measurable KPIs (e.g., ≥85% accuracy).
+              - KPIs example: ≥85% accuracy.
             5 SCOPE OF WORK – FUNCTIONAL CAPABILITIES
               Flows: {', '.join(sel_caps)} {custom_cap}. Integrations: {', '.join(sel_ints)}
             6 SOLUTION ARCHITECTURE
-              Placeholder for Diagram: "Specifics to be discussed basis POC"
+              Include ONLY: "Specifics to be discussed basis POC"
             7 ARCHITECTURE & AWS SERVICES
-              Detailed description of: {', '.join(compute)}, {', '.join(ai_svcs)}, {', '.join(st_svcs)}, {ui_layer}
+              Detailed description of: {', '.join(compute_choices)}, {', '.join(ai_svcs)}, {', '.join(st_svcs)}, {ui_layer}
             8 NON-FUNCTIONAL REQUIREMENTS
-              Performance Profile: {perf}. Security Controls: {', '.join(sec)}
-            9 TIMELINE & PHASING
-              Total Duration: {poc_dur}. Breakdown:
-              {get_md(st.session_state.timeline_phases)}
-              Cost Ownership: {ownership}
+              Performance: {perf}. Security: {', '.join(sec)}
+            9 COSTING INPUTS
+              - {cost_table}
+              - Ownership: {ownership}
             10 FINAL OUTPUTS
               Deliverables: {', '.join(delivs)}
               Next Steps: {', '.join(nxt)}
             """
-            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering 1 to 10. Capitalize all titles. Use Heading->Content flow. Page 1 cover, Page 2 TOC."}]}})
+            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering 1 to 10. Capitalize all titles. Use Heading->Content flow. Entire document in Times New Roman style font."}]}})
             if res:
                 st.session_state.generated_sow = res.json()['candidates'][0]['content']['parts'][0]['text']
                 st.rerun()
