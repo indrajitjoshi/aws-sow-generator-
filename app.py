@@ -48,9 +48,9 @@ CALCULATOR_LINKS = {
 
 SOW_DIAGRAM_MAP = {
     "L1 Support Bot POC SOW": os.path.join(ASSETS_DIR, "L1 Support Bot POC SOW.png"),
+    "Beauty Advisor POC SOW": os.path.join(ASSETS_DIR, "Beauty Advisor POC SOW.png"),
     "Ready Search POC Scope of Work Document": os.path.join(ASSETS_DIR, "Ready Search POC Scope of Work Document.png"),
     "AI based Image Enhancement POC SOW": os.path.join(ASSETS_DIR, "AI based Image Enhancement POC SOW.png"),
-    "Beauty Advisor POC SOW": os.path.join(ASSETS_DIR, "Beauty Advisor POC SOW.png"),
     "AI based Image Inspection POC SOW": os.path.join(ASSETS_DIR, "AI based Image Inspection POC SOW.png"),
     "Gen AI for SOP POC SOW": os.path.join(ASSETS_DIR, "Gen AI for SOP POC SOW.png"),
     "Project Scope Document": os.path.join(ASSETS_DIR, "Project Scope Document.png"),
@@ -93,7 +93,7 @@ def add_hyperlink(paragraph, text, url):
     new_run = OxmlElement('w:r')
     rPr = OxmlElement('w:rPr')
     c = OxmlElement('w:color')
-    c.set(qn('w:val'), '000000') # Fixed black color for Word hyperlinks
+    c.set(qn('w:val'), '000000') 
     u = OxmlElement('w:u')
     u.set(qn('w:val'), 'single')
     rPr.append(c); rPr.append(u); new_run.append(rPr)
@@ -110,7 +110,7 @@ def create_docx_logic(text_content, branding, sow_name):
     
     doc = Document()
     
-    # Set default style to Times New Roman, Black
+    # Global document style: Times New Roman, Black
     style = doc.styles['Normal']
     style.font.name = 'Times New Roman'
     style.font.size = Pt(11)
@@ -138,18 +138,12 @@ def create_docx_logic(text_content, branding, sow_name):
     run_dt = dt.add_run(branding["doc_date_str"]); run_dt.bold = True; run_dt.font.name = 'Times New Roman'
     doc.add_page_break()
 
-    # Section Headers Mapping (Must be ALL CAPS)
+    # Section Headers Mapping
     headers_map = {
-        "1": "TABLE OF CONTENTS", 
-        "2": "PROJECT OVERVIEW", 
-        "3": "ASSUMPTIONS & DEPENDENCIES",
-        "4": "POC SUCCESS CRITERIA", 
-        "5": "SCOPE OF WORK – FUNCTIONAL CAPABILITIES",
-        "6": "SOLUTION ARCHITECTURE", 
-        "7": "ARCHITECTURE & AWS SERVICES",
-        "8": "NON-FUNCTIONAL REQUIREMENTS", 
-        "9": "COSTING INPUTS", 
-        "10": "FINAL OUTPUTS"
+        "1": "TABLE OF CONTENTS", "2": "PROJECT OVERVIEW", "3": "ASSUMPTIONS & DEPENDENCIES",
+        "4": "POC SUCCESS CRITERIA", "5": "SCOPE OF WORK – FUNCTIONAL CAPABILITIES",
+        "6": "SOLUTION ARCHITECTURE", "7": "ARCHITECTURE & AWS SERVICES",
+        "8": "NON-FUNCTIONAL REQUIREMENTS", "9": "COSTING INPUTS", "10": "FINAL OUTPUTS"
     }
 
     lines = text_content.split('\n')
@@ -159,7 +153,10 @@ def create_docx_logic(text_content, branding, sow_name):
     while i < len(lines):
         line = lines[i].strip()
         if not line: i += 1; continue
-        clean = re.sub(r'\*+', '', line).strip()
+        
+        # Clean markdown hashtags and bolding artifacts
+        clean = re.sub(r'#+\s*', '', line).strip()
+        clean = re.sub(r'\*+', '', clean).strip()
         upper = clean.upper()
 
         current_id = None
@@ -168,13 +165,12 @@ def create_docx_logic(text_content, branding, sow_name):
                 current_id = h_id; break
         
         if current_id:
-            # Force page break after TOC table/content and before Section 2
+            # Force page break after TOC
             if in_toc and current_id == "2": 
                 doc.add_page_break()
                 in_toc = False
                 
             if not rendered_sections[current_id]:
-                # Force capital titles
                 h = doc.add_heading(clean.upper(), level=1)
                 for run in h.runs: 
                     run.font.name = 'Times New Roman'
@@ -183,7 +179,6 @@ def create_docx_logic(text_content, branding, sow_name):
                 rendered_sections[current_id] = True
                 if current_id == "1": in_toc = True
                 
-                # Architecture Diagram injection in Section 6
                 if current_id == "6":
                     diag = SOW_DIAGRAM_MAP.get(sow_name)
                     if diag and os.path.exists(diag):
@@ -195,7 +190,6 @@ def create_docx_logic(text_content, branding, sow_name):
                             r_diag.font.color.rgb = RGBColor(0, 0, 0)
             i += 1; continue
             
-        # Table Processing
         if line.startswith('|') and i + 1 < len(lines) and lines[i+1].strip().startswith('|'):
             table_lines = []
             while i < len(lines) and lines[i].strip().startswith('|'):
@@ -207,14 +201,12 @@ def create_docx_logic(text_content, branding, sow_name):
                     cell = t.rows[0].cells[idx]
                     r_h = cell.paragraphs[0].add_run(h_text)
                     r_h.bold = True; r_h.font.name = 'Times New Roman'
-                    r_h.font.color.rgb = RGBColor(0, 0, 0)
                 for row_line in table_lines[2:]:
                     cells_data = [c.strip() for c in row_line.split('|') if c.strip()]
                     r = t.add_row().cells
                     for idx, c_text in enumerate(cells_data): 
                         if idx < len(r): 
                             p_r = r[idx].paragraphs[0]
-                            # Special handling for "Estimate" hyperlinks in cost table
                             if "Estimate" in c_text:
                                 calc_url = CALCULATOR_LINKS.get(sow_name, "https://calculator.aws/")
                                 parts = c_text.split("Estimate")
@@ -227,18 +219,14 @@ def create_docx_logic(text_content, branding, sow_name):
                                 r_r.font.color.rgb = RGBColor(0, 0, 0)
             continue
 
-        if line.startswith('## '): 
-            h = doc.add_heading(clean, level=2)
-            for r_h in h.runs: r_h.font.name, r_h.font.color.rgb = 'Times New Roman', RGBColor(0, 0, 0)
-        elif line.startswith('### '): 
-            h = doc.add_heading(clean, level=3)
+        if line.startswith('## ') or line.startswith('### '): 
+            h = doc.add_heading(clean, level=2 if line.startswith('## ') else 3)
             for r_h in h.runs: r_h.font.name, r_h.font.color.rgb = 'Times New Roman', RGBColor(0, 0, 0)
         elif line.startswith('- ') or line.startswith('* '):
             p_b = doc.add_paragraph(style="List Bullet")
             r_b = p_b.add_run(clean[2:]); r_b.font.name, r_b.font.color.rgb = 'Times New Roman', RGBColor(0, 0, 0)
         else:
             p_n = doc.add_paragraph()
-            # Handle Estimate links in plain text descriptions
             if "Estimate" in clean:
                 calc_url = CALCULATOR_LINKS.get(sow_name, "https://calculator.aws/")
                 parts = clean.split("Estimate")
@@ -290,11 +278,7 @@ with st.sidebar:
     with st.expander("🔑 API Key", expanded=False): api_key = st.text_input("Gemini API Key", type="password")
     st.divider()
     st.header("📋 1. Project Intake")
-    sow_opts = [
-        "1. L1 Support Bot POC SOW", "2. Beauty Advisor POC SOW", "3. Ready Search POC Scope of Work Document",
-        "4. AI based Image Enhancement POC SOW", "5. AI based Image Inspection POC SOW",
-        "6. Gen AI for SOP POC SOW", "7. Project Scope Document", "8. Gen AI Speech To Speech", "9. PoC Scope Document"
-    ]
+    sow_opts = ["1. L1 Support Bot POC SOW", "2. Beauty Advisor POC SOW", "3. Ready Search POC Scope of Work Document", "4. AI based Image Enhancement POC SOW", "5. AI based Image Inspection POC SOW", "6. Gen AI for SOP POC SOW", "7. Project Scope Document", "8. Gen AI Speech To Speech", "9. PoC Scope Document"]
     solution_type = st.selectbox("1.1 Solution Type", sow_opts)
     sow_key = solution_type.split(". ", 1)[1] if ". " in solution_type else solution_type
     
@@ -423,7 +407,7 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
             STRICT SECTION FLOW (Follow numbering 1 to 10 exactly):
             1 TABLE OF CONTENTS
             2 PROJECT OVERVIEW
-              - Objective: {biz_objective} (Rewrite into formal architecture objective)
+              - Objective: {biz_objective}
               - Team Roles:
               ### Partner Executive Sponsor
               {get_md(st.session_state.stakeholders["Partner"])}
@@ -455,13 +439,14 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
               Deliverables: {', '.join(delivs)}
               Next Steps: {', '.join(nxt)}
 
-            STRICT FORMATTING:
-            - ALL SECTION TITLES MUST BE ALL CAPS.
-            - Start with '1 TABLE OF CONTENTS'. No intro text.
-            - Content must follow each heading immediately.
-            - Entire document must be compatible with Times New Roman, Black text.
+            STRICT FORMATTING RULES:
+            - Start immediately with '1 TABLE OF CONTENTS'. DO NOT include any intro fluff, titles like 'Statement of Work', or hashtags like # before the TOC.
+            - ALL SECTION TITLES MUST BE IN CAPITAL LETTERS.
+            - Heading followed by its respective content (Heading -> Content flow).
+            - DO NOT use markdown bolding (**) or stray hashtags (###) in the text body.
+            - Use Black text only.
             """
-            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering 1 to 10 exactly. Heading->Content flow. Page 1 cover, Page 2 TOC."}]}})
+            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering 1 to 10. Start with '1 TABLE OF CONTENTS'. No intro text. Capitalize all titles. Remove markdown bolding and body hashtags."}]}})
             if res:
                 st.session_state.generated_sow = res.json()['candidates'][0]['content']['parts'][0]['text']
                 st.rerun()
@@ -473,7 +458,6 @@ if st.session_state.generated_sow:
     with tab_e: st.session_state.generated_sow = st.text_area("Modify SOW:", st.session_state.generated_sow, height=600)
     with tab_p:
         st.markdown('<div class="sow-preview">', unsafe_allow_html=True)
-        # Fix link visualization for "Estimate"
         calc_url_p = CALCULATOR_LINKS.get(sow_key, "https://calculator.aws/")
         p_content = st.session_state.generated_sow.replace("Estimate", f'<a href="{calc_url_p}" target="_blank">Estimate</a>')
         match = re.search(r'(?i)(^6\s+SOLUTION ARCHITECTURE.*)', p_content, re.MULTILINE)
@@ -482,10 +466,11 @@ if st.session_state.generated_sow:
             diag_out = SOW_DIAGRAM_MAP.get(sow_key)
             if diag_out and os.path.exists(diag_out): st.image(diag_out)
             st.markdown(p_content[match.end():], unsafe_allow_html=True)
-        else: st.markdown(p_content, unsafe_allow_html=True)
+        else:
+            st.markdown(p_content, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
     
     if st.button("💾 Prepare Microsoft Word"):
         branding = {"sow_name": sow_key, "customer_logo_bytes": customer_logo.getvalue() if customer_logo else None, "doc_date_str": doc_date.strftime("%d %B %Y")}
         docx_data = create_docx_logic(st.session_state.generated_sow, branding, sow_key)
-        st.download_button("📥 Download (.docx)", docx_data, f"SOW_{sow_key.replace(' ', '_')}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+        st.download_button("📥 Download SOW (.docx)", docx_data, f"SOW_{sow_key.replace(' ', '_')}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
