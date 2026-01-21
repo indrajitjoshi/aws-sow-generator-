@@ -38,7 +38,6 @@ CALCULATOR_LINKS = {
     "Ready Search POC Scope of Work Document": "https://calculator.aws/#/estimate?id=f8bc48f1ae566b8ea1241994328978e7e86d3490",
     "AI based Image Enhancement POC SOW": "https://calculator.aws/#/estimate?id=9a3e593b92b796acecf31a78aec17d7eb957d1e5",
     "Beauty Advisor POC SOW": "https://calculator.aws/#/estimate?id=3f89756a35f7bac7b2cd88d95f3e9aba9be9b0eb",
-    "Beauty Advisor Production": "https://calculator.aws/#/estimate?id=4d7f092e819c799f680fd14f8de3f181f565c48e",
     "AI based Image Inspection POC SOW": "https://calculator.aws/#/estimate?id=72c56f93b0c0e101d67a46af4f4fe9886eb93342",
     "Gen AI for SOP POC SOW": "https://calculator.aws/#/estimate?id=c21e9b242964724bf83556cfeee821473bb935d1",
     "Project Scope Document": "https://calculator.aws/#/estimate?id=37339d6e34c73596559fe09ca16a0ac2ec4c4252",
@@ -138,44 +137,46 @@ def create_docx_logic(text_content, branding, sow_name):
     run_dt = dt.add_run(branding["doc_date_str"]); run_dt.bold = True; run_dt.font.name = 'Times New Roman'
     doc.add_page_break()
 
-    # Section Headers Mapping
+    # Section Headers Mapping (MUST BE CAPITALIZED TO MATCH AI OUTPUT)
     headers_map = {
         "1": "TABLE OF CONTENTS", "2": "PROJECT OVERVIEW", "3": "ASSUMPTIONS & DEPENDENCIES",
         "4": "POC SUCCESS CRITERIA", "5": "SCOPE OF WORK – FUNCTIONAL CAPABILITIES",
-        "6": "SOLUTION ARCHITECTURE", "7": "ARCHITECTURE & AWS SERVICES",
-        "8": "NON-FUNCTIONAL REQUIREMENTS", "9": "TIMELINE & PHASING", "10": "FINAL OUTPUTS"
+        "6": "SOLUTION ARCHITECTURE", "7": "NON-FUNCTIONAL REQUIREMENTS",
+        "8": "TIMELINE & PHASING", "9": "COSTING INPUTS & OWNERSHIP", "10": "FINAL OUTPUTS"
     }
 
     lines = text_content.split('\n')
     rendered_sections = {str(i): False for i in range(1, 11)}
-    i, in_toc = 0, False
+    i, in_toc, content_started = 0, False, False
 
     while i < len(lines):
         line = lines[i].strip()
         if not line: i += 1; continue
         
-        # Determine if this is a bullet point before stripping for cleaning
-        is_bullet = line.startswith('- ') or line.startswith('* ')
-        
         # Clean markdown artifacts for identification
-        clean = re.sub(r'#+\s*', '', line).strip()
-        clean = re.sub(r'\*+', '', clean).strip()
-        upper = clean.upper()
+        clean_line = re.sub(r'#+\s*', '', line).strip()
+        clean_line = re.sub(r'\*+', '', clean_line).strip()
+        upper = clean_line.upper()
 
         current_id = None
         for h_id, h_title in headers_map.items():
             if re.match(rf"^{h_id}[\.\s]+{re.escape(h_title)}", upper):
                 current_id = h_id; break
         
+        # Logic to skip intro commentary before section 1
+        if not content_started:
+            if current_id == "1": content_started = True
+            else: i += 1; continue
+
         if current_id:
-            # Force page break after TOC (Section 1) before Project Overview (Section 2)
+            # Force page break after TOC (Section 1) and before Section 2
             if in_toc and current_id == "2": 
                 doc.add_page_break()
                 in_toc = False
                 
             if not rendered_sections[current_id]:
                 # Force capital titles as requested
-                h = doc.add_heading(clean.upper(), level=1)
+                h = doc.add_heading(clean_line.upper(), level=1)
                 for run in h.runs: 
                     run.font.name = 'Times New Roman'
                     run.font.color.rgb = RGBColor(0, 0, 0)
@@ -183,7 +184,7 @@ def create_docx_logic(text_content, branding, sow_name):
                 rendered_sections[current_id] = True
                 if current_id == "1": in_toc = True
                 
-                # Solution Architecture Diagram injection in Section 6
+                # Diagram injection in Section 6
                 if current_id == "6":
                     diag = SOW_DIAGRAM_MAP.get(sow_name)
                     if diag and os.path.exists(diag):
@@ -212,6 +213,7 @@ def create_docx_logic(text_content, branding, sow_name):
                     for idx, c_text in enumerate(cells_data): 
                         if idx < len(r): 
                             p_r = r[idx].paragraphs[0]
+                            # Active hyperlink for "Estimate"
                             if "Estimate" in c_text:
                                 calc_url = CALCULATOR_LINKS.get(sow_name, "https://calculator.aws/")
                                 parts = c_text.split("Estimate")
@@ -225,25 +227,26 @@ def create_docx_logic(text_content, branding, sow_name):
             continue
 
         if line.startswith('## ') or line.startswith('### '): 
-            h = doc.add_heading(clean, level=2 if line.startswith('## ') else 3)
+            h = doc.add_heading(clean_line, level=2 if line.startswith('## ') else 3)
             for run in h.runs: 
                 run.font.name = 'Times New Roman'
                 run.font.color.rgb = RGBColor(0, 0, 0)
-        elif is_bullet:
+        elif line.startswith('- ') or line.startswith('* '):
             p_b = doc.add_paragraph(style="List Bullet")
-            # Corrected truncation logic: use regex to remove markdown prefix instead of fixed slice
-            bullet_text = re.sub(r'^[\-\*]\s*', '', line).strip()
-            r_b = p_b.add_run(bullet_text); r_b.font.name, r_b.font.color.rgb = 'Times New Roman', RGBColor(0, 0, 0)
+            # Fixed the truncation logic that caused "spelling" errors
+            bullet_clean = re.sub(r'^[\-\*]\s*', '', line).strip()
+            bullet_clean = re.sub(r'\*+', '', bullet_clean).strip()
+            r_b = p_b.add_run(bullet_clean); r_b.font.name, r_b.font.color.rgb = 'Times New Roman', RGBColor(0, 0, 0)
         else:
             p_n = doc.add_paragraph()
-            if "Estimate" in clean:
+            if "Estimate" in clean_line:
                 calc_url = CALCULATOR_LINKS.get(sow_name, "https://calculator.aws/")
-                parts = clean.split("Estimate")
+                parts = clean_line.split("Estimate")
                 p_n.add_run(parts[0]).font.name = 'Times New Roman'
                 add_hyperlink(p_n, "Estimate", calc_url)
                 if len(parts) > 1: p_n.add_run(parts[1]).font.name = 'Times New Roman'
             else:
-                run_n = p_n.add_run(clean)
+                run_n = p_n.add_run(clean_line)
                 run_n.font.name, run_n.font.color.rgb = 'Times New Roman', RGBColor(0, 0, 0)
                 if any(k in upper for k in ["SPONSOR", "CONTACTS", "ASSUMPTIONS:", "DEPENDENCIES:"]):
                     run_n.bold = True
@@ -426,7 +429,7 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
             STRICT SECTION FLOW (Follow exactly 1 to 10):
             1 TABLE OF CONTENTS
             2 PROJECT OVERVIEW
-              - Objective: {biz_objective} (Rewrite into professional architect language)
+              - Objective: {biz_objective} (Refine into professional architect language)
               - Team Roles:
               ### Partner Executive Sponsor
               {get_md(st.session_state.stakeholders["Partner"])}
@@ -443,13 +446,12 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
               3.3 Key Assumptions: {', '.join(sel_ass)} {custom_ass}
             4 POC SUCCESS CRITERIA
               Dimensions: {', '.join(sel_dims)}. Validation: {val_req}
-              - Provide specific measurable KPIs (e.g., ≥85% accuracy).
             5 SCOPE OF WORK – FUNCTIONAL CAPABILITIES
               Flows: {', '.join(sel_caps)} {custom_cap}. Integrations: {', '.join(sel_ints)}
             6 SOLUTION ARCHITECTURE
               Include ONLY: "Specifics to be discussed basis POC"
             7 ARCHITECTURE & AWS SERVICES
-              Detailed description of: {', '.join(compute_choices)}, {', '.join(ai_svcs)}, {', '.join(st_svcs)}, {ui_layer}
+              Services: {', '.join(compute_choices)}, {', '.join(ai_svcs)}, {', '.join(st_svcs)}, {ui_layer}
             8 NON-FUNCTIONAL REQUIREMENTS
               Performance: {perf}. Security: {', '.join(sec)}
             9 TIMELINE & PHASING
@@ -458,16 +460,18 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
               Deliverables: {', '.join(delivs)}
               Next Steps: {', '.join(nxt)}
               Cost Ownership: {ownership}
+              Pricing: {cost_table}
 
             STRICT FORMATTING RULES:
-            - Start immediately with '1 TABLE OF CONTENTS'. DO NOT include intro fluff or hashtags before Section 1.
+            - Start immediately with '1 TABLE OF CONTENTS'. DO NOT include intro fluff, titles like 'Statement of Work', or hashtags before Section 1.
             - ALL SECTION TITLES (1-10) MUST BE CAPITALIZED.
             - Format: Heading immediately followed by its content (Heading -> Content flow).
+            - Use formal Tables for data, team, and pricing.
             - Tonality: Professional, technical, enterprise-ready.
             - Language: Black text only. Times New Roman style font compatible.
             - Ensure extremely high spelling accuracy.
             """
-            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering 1 to 10 exactly. Start with '1 TABLE OF CONTENTS'. No intro text. Capitalize all titles. Use Heading->Content flow. Black text only."}]}})
+            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering 1 to 10 exactly. Start with '1 TABLE OF CONTENTS'. No intro text. Capitalize all titles. Heading->Content flow. Black text only."}]}})
             if res:
                 st.session_state.generated_sow = res.json()['candidates'][0]['content']['parts'][0]['text']
                 st.rerun()
@@ -477,10 +481,9 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
 if st.session_state.generated_sow:
     st.divider(); tab_e, tab_p = st.tabs(["✍️ Editor", "📄 Visual Preview"])
     with tab_e: 
-        st.session_state.generated_sow = st.text_area("Modify SOW Content:", st.session_state.generated_sow, height=600)
+        st.session_state.generated_sow = st.text_area("Modify SOW:", st.session_state.generated_sow, height=600)
     with tab_p:
         st.markdown('<div class="sow-preview">', unsafe_allow_html=True)
-        # Visual Preview Rendering
         calc_url_p = CALCULATOR_LINKS.get(sow_key, "https://calculator.aws/")
         p_content = st.session_state.generated_sow.replace("Estimate", f'<a href="{calc_url_p}" target="_blank">Estimate</a>')
         
@@ -489,7 +492,7 @@ if st.session_state.generated_sow:
         if match:
             st.markdown(p_content[:match.end()], unsafe_allow_html=True)
             diag_out = SOW_DIAGRAM_MAP.get(sow_key)
-            if diag_out and os.path.exists(diag_out): st.image(diag_out, caption=f"{sow_key} Architecture Diagram")
+            if diag_out and os.path.exists(diag_out): st.image(diag_out, caption=f"{sow_key} Architecture")
             st.markdown(p_content[match.end():], unsafe_allow_html=True)
         else:
             st.markdown(p_content, unsafe_allow_html=True)
