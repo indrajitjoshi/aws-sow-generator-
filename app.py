@@ -155,9 +155,6 @@ def create_docx_logic(text_content, branding, sow_name):
         line = lines[i].strip()
         if not line: i += 1; continue
         
-        # Determine if this is a bullet point
-        is_bullet = line.startswith('- ') or line.startswith('* ')
-        
         # Clean markdown artifacts for identification
         clean_line = re.sub(r'#+\s*', '', line).strip()
         clean_line = re.sub(r'\*+', '', clean_line).strip()
@@ -180,7 +177,7 @@ def create_docx_logic(text_content, branding, sow_name):
                 in_toc = False
                 
             if not rendered_sections[current_id]:
-                # Force capital titles as requested
+                # Force capital titles
                 h = doc.add_heading(clean_line.upper(), level=1)
                 for run in h.runs: 
                     run.font.name = 'Times New Roman'
@@ -219,12 +216,16 @@ def create_docx_logic(text_content, branding, sow_name):
                     for idx, c_text in enumerate(cells_data): 
                         if idx < len(r): 
                             p_r = r[idx].paragraphs[0]
-                            if "Estimate" in c_text:
+                            # Active hyperlink for "Estimate" (Case insensitive)
+                            if "estimate" in c_text.lower():
                                 calc_url = CALCULATOR_LINKS.get(sow_name, "https://calculator.aws/")
-                                parts = c_text.split("Estimate")
-                                p_r.add_run(parts[0]).font.name = 'Times New Roman'
+                                # Find actual text to replace
+                                start_idx = c_text.lower().find("estimate")
+                                pre = c_text[:start_idx]
+                                post = c_text[start_idx+len("estimate"):]
+                                p_r.add_run(pre).font.name = 'Times New Roman'
                                 add_hyperlink(p_r, "Estimate", calc_url)
-                                if len(parts) > 1: p_r.add_run(parts[1]).font.name = 'Times New Roman'
+                                if post: p_r.add_run(post).font.name = 'Times New Roman'
                             else:
                                 r_r = p_r.add_run(c_text)
                                 r_r.font.name = 'Times New Roman'
@@ -236,20 +237,23 @@ def create_docx_logic(text_content, branding, sow_name):
             for run in h.runs: 
                 run.font.name = 'Times New Roman'
                 run.font.color.rgb = RGBColor(0, 0, 0)
-        elif is_bullet:
+        elif line.startswith('- ') or line.startswith('* '):
             p_b = doc.add_paragraph(style="List Bullet")
-            # Fixed the truncation logic that caused spelling errors
+            # Fixed the truncation logic: use regex to remove bullet markers
             bullet_clean = re.sub(r'^[\-\*]\s*', '', line).strip()
             bullet_clean = re.sub(r'\*+', '', bullet_clean).strip()
             r_b = p_b.add_run(bullet_clean); r_b.font.name, r_b.font.color.rgb = 'Times New Roman', RGBColor(0, 0, 0)
         else:
             p_n = doc.add_paragraph()
-            if "Estimate" in clean_line:
+            # Handle Estimate links in plain text
+            if "estimate" in clean_line.lower():
                 calc_url = CALCULATOR_LINKS.get(sow_name, "https://calculator.aws/")
-                parts = clean_line.split("Estimate")
-                p_n.add_run(parts[0]).font.name = 'Times New Roman'
+                start_idx = clean_line.lower().find("estimate")
+                pre = clean_line[:start_idx]
+                post = clean_line[start_idx+len("estimate"):]
+                p_n.add_run(pre).font.name = 'Times New Roman'
                 add_hyperlink(p_n, "Estimate", calc_url)
-                if len(parts) > 1: p_n.add_run(parts[1]).font.name = 'Times New Roman'
+                if post: p_n.add_run(post).font.name = 'Times New Roman'
             else:
                 run_n = p_n.add_run(clean_line)
                 run_n.font.name, run_n.font.color.rgb = 'Times New Roman', RGBColor(0, 0, 0)
@@ -378,7 +382,7 @@ st.divider()
 # --- 6. ARCHITECTURE & AWS SERVICES ---
 st.header("🏢 6. Architecture & AWS Services")
 st.subheader("🖥️ 6.1 Compute & Orchestration")
-compute_choices = st.multiselect("Separate Options:", ["AWS Lambda", "Step Functions", "Amazon ECS / EKS(future)", "Hybrid"], default=["AWS Lambda", "Step Functions"])
+compute_choices = st.multiselect("Options:", ["AWS Lambda", "Step Functions", "Amazon ECS / EKS(future)", "Hybrid"], default=["AWS Lambda", "Step Functions"])
 st.subheader("🤖 6.2 GenAI / ML Services")
 ai_svcs = st.multiselect("AI Services:", ["Amazon Bedrock", "Amazon SageMaker", "Rekognition", "Textract", "Comprehend", "Transcribe", "Translate"], default=["Amazon Bedrock"])
 st.subheader("💾 6.3 Storage & Search")
@@ -404,7 +408,7 @@ st.divider()
 # --- 9. COSTING ---
 st.header("💰 9. Costing Inputs & Ownership")
 st.subheader("📊 9.1 Price Calculator")
-st.info(f"Link: {CALCULATOR_LINKS.get(sow_key, 'https://calculator.aws')}")
+st.info(f"Calculator Link: {CALCULATOR_LINKS.get(sow_key, 'https://calculator.aws')}")
 st.subheader("🤝 9.2 Cost Ownership")
 ownership = st.selectbox("Ownership:", ["Funded by AWS", "Funded by Partner", "Funded by Customer", "Shared"], index=2)
 st.divider()
@@ -420,7 +424,7 @@ nxt = st.multiselect("Next Steps:", ["Production proposal", "Scaling roadmap", "
 if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
     if not api_key: st.error("API Key required.")
     else:
-        with st.spinner("Generating document..."):
+        with st.spinner("Architecting document..."):
             def get_md(df): return df.to_markdown(index=False)
             cost_info = SOW_COST_TABLE_MAP.get(sow_key, {})
             cost_table = "| System | Infra Cost / month | AWS Calculator Cost |\n| --- | --- | --- |\n"
@@ -429,12 +433,12 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
                 cost_table += f"| {label} | {v} | Estimate |\n"
             
             prompt = f"""
-            You are a professional enterprise AWS Solutions Architect. Generate a formal enterprise SOW for {sow_key} in the {final_industry} industry. 
+            You are a professional enterprise AWS Solutions Architect. Generate a high-quality formal enterprise SOW for {sow_key} in the {final_industry} industry. 
             
             STRICT SECTION FLOW (Follow exactly 1 to 10):
             1 TABLE OF CONTENTS
             2 PROJECT OVERVIEW
-              - Objective: {biz_objective} (Refine into professional architect language)
+              - Objective: {biz_objective} (Rewrite into professional architect language)
               - Team Roles:
               ### Partner Executive Sponsor
               {get_md(st.session_state.stakeholders["Partner"])}
@@ -471,12 +475,11 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
             - Start immediately with '1 TABLE OF CONTENTS'. DO NOT include intro fluff, titles like 'Statement of Work', or hashtags before Section 1.
             - ALL SECTION TITLES (1-10) MUST BE CAPITALIZED.
             - Format: Heading immediately followed by its content (Heading -> Content flow).
-            - Use formal Tables for data, team, and pricing.
-            - Tonality: Professional, technical, enterprise-ready.
+            - Tonality: Professional, Technical, Corporate.
             - Language: Black text only. Times New Roman style font compatible.
             - Ensure extremely high spelling accuracy.
             """
-            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering 1 to 10 exactly. Start with '1 TABLE OF CONTENTS'. No intro text. Capitalize all titles. Heading->Content flow. Black text only."}]}})
+            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering 1 to 10 exactly. Start with '1 TABLE OF CONTENTS'. No intro text. Capitalize all titles. Heading->Content flow. Black text only. Times New Roman style."}]}})
             if res:
                 st.session_state.generated_sow = res.json()['candidates'][0]['content']['parts'][0]['text']
                 st.rerun()
