@@ -7,21 +7,20 @@ import time
 import requests
 import pandas as pd
 
-# --- FILE PATHING & DIAGRAM MAPPING ---
+# ---------------- FILE PATHS ----------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.join(BASE_DIR, "diagrams")
 
-# Static assets
 AWS_PN_LOGO = os.path.join(ASSETS_DIR, "aws partner logo.jpg")
 ONETURE_LOGO = os.path.join(ASSETS_DIR, "oneture logo1.jpg")
 AWS_ADV_LOGO = os.path.join(ASSETS_DIR, "aws advanced logo1.jpg")
 
-# Mapped Infra Costs
+# ---------------- COST MAP ----------------
 SOW_COST_TABLE_MAP = {
     "L1 Support Bot POC SOW": {"poc_cost": "3,536.40 USD"},
     "Beauty Advisor POC SOW": {
-        "poc_cost": "4,525.66 USD + 200 USD (Amazon Bedrock Cost) = 4,725.66",
-        "prod_cost": "4,525.66 USD + 1,175.82 USD (Amazon Bedrock Cost) = 5,701.48"
+        "poc_cost": "4,725.66 USD",
+        "prod_cost": "5,701.48 USD"
     },
     "Ready Search POC Scope of Work Document": {"poc_cost": "2,641.40 USD"},
     "AI based Image Enhancement POC SOW": {"poc_cost": "2,814.34 USD"},
@@ -29,16 +28,14 @@ SOW_COST_TABLE_MAP = {
     "Gen AI for SOP POC SOW": {"poc_cost": "2,110.30 USD"},
     "Project Scope Document": {"prod_cost": "2,993.60 USD"},
     "Gen AI Speech To Speech": {"prod_cost": "2,124.23 USD"},
-    "PoC Scope Document": {"amazon_bedrock": "1,000 USD", "total": "$ 3,150"}
+    "PoC Scope Document": {"total": "3,150 USD"}
 }
 
-# AWS Calculator Links
 CALCULATOR_LINKS = {
     "L1 Support Bot POC SOW": "https://calculator.aws/#/estimate?id=211ea64cba5a8f5dc09805f4ad1a1e598ef5238b",
+    "Beauty Advisor POC SOW": "https://calculator.aws/#/estimate?id=3f89756a35f7bac7b2cd88d95f3e9aba9be9b0eb",
     "Ready Search POC Scope of Work Document": "https://calculator.aws/#/estimate?id=f8bc48f1ae566b8ea1241994328978e7e86d3490",
     "AI based Image Enhancement POC SOW": "https://calculator.aws/#/estimate?id=9a3e593b92b796acecf31a78aec17d7eb957d1e5",
-    "Beauty Advisor POC SOW": "https://calculator.aws/#/estimate?id=3f89756a35f7bac7b2cd88d95f3e9aba9be9b0eb",
-    "Beauty Advisor Production": "https://calculator.aws/#/estimate?id=4d7f092e819c799f680fd14f8de3f181f565c48e",
     "AI based Image Inspection POC SOW": "https://calculator.aws/#/estimate?id=72c56f93b0c0e101d67a46af4f4fe9886eb93342",
     "Gen AI for SOP POC SOW": "https://calculator.aws/#/estimate?id=c21e9b242964724bf83556cfeee821473bb935d1",
     "Project Scope Document": "https://calculator.aws/#/estimate?id=37339d6e34c73596559fe09ca16a0ac2ec4c4252",
@@ -46,60 +43,135 @@ CALCULATOR_LINKS = {
     "PoC Scope Document": "https://calculator.aws/#/estimate?id=420ed9df095e7824a144cb6c0e9db9e7ec3c4153"
 }
 
-SOW_DIAGRAM_MAP = {
-    "L1 Support Bot POC SOW": os.path.join(ASSETS_DIR, "L1 Support Bot POC SOW.png"),
-    "Beauty Advisor POC SOW": os.path.join(ASSETS_DIR, "Beauty Advisor POC SOW.png"),
-    "Ready Search POC Scope of Work Document": os.path.join(ASSETS_DIR, "Ready Search POC Scope of Work Document.png"),
-    "AI based Image Enhancement POC SOW": os.path.join(ASSETS_DIR, "AI based Image Enhancement POC SOW.png"),
-    "AI based Image Inspection POC SOW": os.path.join(ASSETS_DIR, "AI based Image Inspection POC SOW.png"),
-    "Gen AI for SOP POC SOW": os.path.join(ASSETS_DIR, "Gen AI for SOP POC SOW.png"),
-    "Project Scope Document": os.path.join(ASSETS_DIR, "Project Scope Document.png"),
-    "Gen AI Speech To Speech": os.path.join(ASSETS_DIR, "Gen AI Speech To Speech.png"),
-    "PoC Scope Document": os.path.join(ASSETS_DIR, "PoC Scope Document.png")
-}
+SOW_DIAGRAM_MAP = {k: os.path.join(ASSETS_DIR, f"{k}.png") for k in SOW_COST_TABLE_MAP.keys()}
 
-# --- CONFIGURATION ---
-st.set_page_config(page_title="GenAI SOW Architect", layout="wide", page_icon="📄")
+# ---------------- STREAMLIT CONFIG ----------------
+st.set_page_config("GenAI SOW Architect", layout="wide", page_icon="📄")
 
 st.markdown("""
 <style>
-.main { background-color: #f8fafc; }
-.stTabs [data-baseweb="tab"] { font-weight: 600; }
 .sow-preview {
-    background-color: white;
-    padding: 40px;
-    border-radius: 12px;
-    border: 1px solid #e2e8f0;
-    line-height: 1.7;
-    font-family: "Times New Roman", Times, serif;
-    color: #000;
+    background-color:white;
+    padding:40px;
+    border-radius:12px;
+    border:1px solid #e2e8f0;
+    font-family: "Times New Roman";
 }
-.sow-preview a { color: #000; text-decoration: underline; }
+.sow-preview a { color:black; text-decoration:underline; }
 </style>
 """, unsafe_allow_html=True)
 
-def call_gemini_with_retry(api_key, payload):
+# ---------------- SESSION INIT ----------------
+if "generated_sow" not in st.session_state:
+    st.session_state.generated_sow = ""
+
+# ---------------- GEMINI CALL ----------------
+def call_gemini(api_key, prompt):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={api_key}"
-    for attempt in range(5):
-        try:
-            res = requests.post(url, json=payload)
-            if res.status_code == 200:
-                return res, None
-            if res.status_code in [429, 503]:
-                time.sleep(2 ** attempt)
-                continue
-            return None, f"API Error {res.status_code}"
-        except Exception:
-            time.sleep(2 ** attempt)
-    return None, "Model overloaded."
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "systemInstruction": {
+            "parts": [{"text": "Enterprise AWS Solutions Architect. Follow section order strictly."}]
+        }
+    }
+    r = requests.post(url, json=payload, timeout=60)
+    if r.status_code == 200:
+        return r.json()["candidates"][0]["content"]["parts"][0]["text"]
+    else:
+        raise Exception(r.text)
 
-# ---------------- FIXED GEMINI CALL ----------------
-# ❌ extra brace removed
-# -----------------------------------------------
+# ---------------- SIDEBAR ----------------
+with st.sidebar:
+    st.title("Architect Pro")
+    api_key = st.text_input("Gemini API Key", type="password")
 
-# (REST OF YOUR CODE REMAINS 100% IDENTICAL)
-# Streamlit UI, image injection, hyperlink logic,
-# DOCX creation, visual preview, and downloads
-# are preserved exactly as provided.
+    sow_key = st.selectbox(
+        "Solution Type",
+        list(SOW_COST_TABLE_MAP.keys())
+    )
+
+# ---------------- MAIN UI ----------------
+st.title("🚀 GenAI Scope of Work Architect")
+
+biz_objective = st.text_area("Business Objective", height=100)
+
+if st.button("✨ Generate Full SOW", use_container_width=True):
+    if not api_key:
+        st.error("API Key required")
+    else:
+        with st.spinner("Generating SOW..."):
+            cost_rows = ""
+            for k, v in SOW_COST_TABLE_MAP.get(sow_key, {}).items():
+                cost_rows += f"| {k} | {v} | Estimate |\n"
+
+            prompt = f"""
+1 TABLE OF CONTENTS
+
+2 PROJECT OVERVIEW
+Objective: {biz_objective}
+
+3 ASSUMPTIONS & DEPENDENCIES
+
+4 POC SUCCESS CRITERIA
+
+5 SCOPE OF WORK – FUNCTIONAL CAPABILITIES
+
+6 SOLUTION ARCHITECTURE
+
+7 ARCHITECTURE & AWS SERVICES
+
+8 NON-FUNCTIONAL REQUIREMENTS
+
+9 TIMELINE & PHASING
+
+10 FINAL OUTPUTS
+
+Pricing:
+| Type | Cost | AWS |
+| --- | --- | --- |
+{cost_rows}
+"""
+            st.session_state.generated_sow = call_gemini(api_key, prompt)
+
+# ---------------- REVIEW ----------------
+if st.session_state.generated_sow:
+    tab1, tab2 = st.tabs(["✍️ Editor", "📄 Preview"])
+
+    with tab1:
+        st.session_state.generated_sow = st.text_area(
+            "Edit Content",
+            st.session_state.generated_sow,
+            height=600
+        )
+
+    with tab2:
+        content = st.session_state.generated_sow.replace(
+            "Estimate",
+            f'<a href="{CALCULATOR_LINKS.get(sow_key, "https://calculator.aws")}">Estimate</a>'
+        )
+        st.markdown(f"<div class='sow-preview'>{content}</div>", unsafe_allow_html=True)
+
+    if st.button("💾 Prepare Microsoft Word"):
+        from docx import Document
+        from docx.shared import Inches
+
+        doc = Document()
+        doc.add_heading(sow_key, 0)
+
+        for line in st.session_state.generated_sow.split("\n"):
+            doc.add_paragraph(line)
+
+        if os.path.exists(SOW_DIAGRAM_MAP.get(sow_key, "")):
+            doc.add_picture(SOW_DIAGRAM_MAP[sow_key], width=Inches(6))
+
+        buffer = io.BytesIO()
+        doc.save(buffer)
+
+        st.download_button(
+            "📥 Download SOW (.docx)",
+            buffer.getvalue(),
+            file_name=f"SOW_{sow_key.replace(' ', '_')}.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
 
 
