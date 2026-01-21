@@ -93,7 +93,7 @@ def add_hyperlink(paragraph, text, url):
     new_run = OxmlElement('w:r')
     rPr = OxmlElement('w:rPr')
     c = OxmlElement('w:color')
-    c.set(qn('w:val'), '000000') 
+    c.set(qn('w:val'), '000000') # Set Black color
     u = OxmlElement('w:u')
     u.set(qn('w:val'), 'single')
     rPr.append(c); rPr.append(u); new_run.append(rPr)
@@ -102,7 +102,6 @@ def add_hyperlink(paragraph, text, url):
     paragraph._p.append(hyperlink)
 
 def create_docx_logic(text_content, branding, sow_name):
-    import docx
     from docx import Document
     from docx.shared import Inches, Pt, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -177,7 +176,7 @@ def create_docx_logic(text_content, branding, sow_name):
                 in_toc = False
                 
             if not rendered_sections[current_id]:
-                # Force capital titles
+                # Force capital titles as requested
                 h = doc.add_heading(clean_line.upper(), level=1)
                 for run in h.runs: 
                     run.font.name = 'Times New Roman'
@@ -186,7 +185,7 @@ def create_docx_logic(text_content, branding, sow_name):
                 rendered_sections[current_id] = True
                 if current_id == "1": in_toc = True
                 
-                # Diagram injection in Section 6
+                # Solution Architecture Diagram injection in Section 6
                 if current_id == "6":
                     diag = SOW_DIAGRAM_MAP.get(sow_name)
                     if diag and os.path.exists(diag):
@@ -239,7 +238,7 @@ def create_docx_logic(text_content, branding, sow_name):
                 run.font.color.rgb = RGBColor(0, 0, 0)
         elif line.startswith('- ') or line.startswith('* '):
             p_b = doc.add_paragraph(style="List Bullet")
-            # Fixed the truncation logic: use regex to remove bullet markers
+            # Corrected logic: regex to strip markdown bullets accurately
             bullet_clean = re.sub(r'^[\-\*]\s*', '', line).strip()
             bullet_clean = re.sub(r'\*+', '', bullet_clean).strip()
             r_b = p_b.add_run(bullet_clean); r_b.font.name, r_b.font.color.rgb = 'Times New Roman', RGBColor(0, 0, 0)
@@ -382,7 +381,7 @@ st.divider()
 # --- 6. ARCHITECTURE & AWS SERVICES ---
 st.header("🏢 6. Architecture & AWS Services")
 st.subheader("🖥️ 6.1 Compute & Orchestration")
-compute_choices = st.multiselect("Options:", ["AWS Lambda", "Step Functions", "Amazon ECS / EKS(future)", "Hybrid"], default=["AWS Lambda", "Step Functions"])
+compute_choices = st.multiselect("Primary Options:", ["AWS Lambda", "Step Functions", "Amazon ECS / EKS(future)", "Hybrid"], default=["AWS Lambda", "Step Functions"])
 st.subheader("🤖 6.2 GenAI / ML Services")
 ai_svcs = st.multiselect("AI Services:", ["Amazon Bedrock", "Amazon SageMaker", "Rekognition", "Textract", "Comprehend", "Transcribe", "Translate"], default=["Amazon Bedrock"])
 st.subheader("💾 6.3 Storage & Search")
@@ -424,7 +423,7 @@ nxt = st.multiselect("Next Steps:", ["Production proposal", "Scaling roadmap", "
 if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
     if not api_key: st.error("API Key required.")
     else:
-        with st.spinner("Architecting document..."):
+        with st.spinner("Generating document..."):
             def get_md(df): return df.to_markdown(index=False)
             cost_info = SOW_COST_TABLE_MAP.get(sow_key, {})
             cost_table = "| System | Infra Cost / month | AWS Calculator Cost |\n| --- | --- | --- |\n"
@@ -433,7 +432,7 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
                 cost_table += f"| {label} | {v} | Estimate |\n"
             
             prompt = f"""
-            You are a professional enterprise AWS Solutions Architect. Generate a high-quality formal enterprise SOW for {sow_key} in the {final_industry} industry. 
+            You are a professional enterprise AWS Solutions Architect. Generate a formal enterprise SOW for {sow_key} in the {final_industry} industry. 
             
             STRICT SECTION FLOW (Follow exactly 1 to 10):
             1 TABLE OF CONTENTS
@@ -495,7 +494,7 @@ if st.session_state.generated_sow:
         calc_url_p = CALCULATOR_LINKS.get(sow_key, "https://calculator.aws/")
         p_content = st.session_state.generated_sow.replace("Estimate", f'<a href="{calc_url_p}" target="_blank">Estimate</a>')
         
-        # Injects the Solution Architecture Diagram in Section 6
+        # Injects Solution Architecture Diagram in Section 6
         match = re.search(r'(?i)(^6\s+SOLUTION ARCHITECTURE.*)', p_content, re.MULTILINE)
         if match:
             st.markdown(p_content[:match.end()], unsafe_allow_html=True)
