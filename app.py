@@ -93,7 +93,7 @@ def add_hyperlink(paragraph, text, url):
     new_run = OxmlElement('w:r')
     rPr = OxmlElement('w:rPr')
     c = OxmlElement('w:color')
-    c.set(qn('w:val'), '000000') # Black color for links
+    c.set(qn('w:val'), '000000') # Black color
     u = OxmlElement('w:u')
     u.set(qn('w:val'), 'single')
     rPr.append(c); rPr.append(u); new_run.append(rPr)
@@ -102,6 +102,7 @@ def add_hyperlink(paragraph, text, url):
     paragraph._p.append(hyperlink)
 
 def create_docx_logic(text_content, branding, sow_name):
+    import docx
     from docx import Document
     from docx.shared import Inches, Pt, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -138,18 +139,12 @@ def create_docx_logic(text_content, branding, sow_name):
     run_dt = dt.add_run(branding["doc_date_str"]); run_dt.bold = True; run_dt.font.name = 'Times New Roman'
     doc.add_page_break()
 
-    # Section Headers Mapping (MUST BE CAPITALIZED)
+    # Section Headers Mapping
     headers_map = {
-        "1": "TABLE OF CONTENTS", 
-        "2": "PROJECT OVERVIEW", 
-        "3": "ASSUMPTIONS & DEPENDENCIES",
-        "4": "POC SUCCESS CRITERIA", 
-        "5": "SCOPE OF WORK – FUNCTIONAL CAPABILITIES",
-        "6": "ARCHITECTURE & AWS SERVICES", 
-        "7": "NON-FUNCTIONAL REQUIREMENTS",
-        "8": "TIMELINE & PHASING", 
-        "9": "COSTING INPUTS", 
-        "10": "FINAL OUTPUTS"
+        "1": "TABLE OF CONTENTS", "2": "PROJECT OVERVIEW", "3": "ASSUMPTIONS & DEPENDENCIES",
+        "4": "POC SUCCESS CRITERIA", "5": "SCOPE OF WORK – FUNCTIONAL CAPABILITIES",
+        "6": "SOLUTION ARCHITECTURE", "7": "ARCHITECTURE & AWS SERVICES",
+        "8": "NON-FUNCTIONAL REQUIREMENTS", "9": "COSTING INPUTS", "10": "FINAL OUTPUTS"
     }
 
     lines = text_content.split('\n')
@@ -160,7 +155,10 @@ def create_docx_logic(text_content, branding, sow_name):
         line = lines[i].strip()
         if not line: i += 1; continue
         
-        # Clean markdown artifacts and hashtags
+        # Determine if this is a bullet point before stripping for cleaning
+        is_bullet = line.startswith('- ') or line.startswith('* ')
+        
+        # Clean markdown artifacts for identification
         clean = re.sub(r'#+\s*', '', line).strip()
         clean = re.sub(r'\*+', '', clean).strip()
         upper = clean.upper()
@@ -171,7 +169,7 @@ def create_docx_logic(text_content, branding, sow_name):
                 current_id = h_id; break
         
         if current_id:
-            # Force page break after Section 1 (Table of Contents)
+            # Force page break after TOC
             if in_toc and current_id == "2": 
                 doc.add_page_break()
                 in_toc = False
@@ -233,9 +231,15 @@ def create_docx_logic(text_content, branding, sow_name):
             for run in h.runs: 
                 run.font.name = 'Times New Roman'
                 run.font.color.rgb = RGBColor(0, 0, 0)
-        elif line.startswith('- ') or line.startswith('* '):
+        elif is_bullet:
             p_b = doc.add_paragraph(style="List Bullet")
-            r_b = p_b.add_run(clean[2:]); r_b.font.name, r_b.font.color.rgb = 'Times New Roman', RGBColor(0, 0, 0)
+            # Corrected the slice logic [2:] was causing spelling errors (truncation)
+            # We now use the 'clean' text which already stripped characters but lost first letters due to the old slice.
+            # We recreate 'clean' for the bullet context specifically.
+            bullet_clean = re.sub(r'^[\-\*]\s*', '', line).strip()
+            bullet_clean = re.sub(r'\*+', '', bullet_clean).strip()
+            r_b = p_b.add_run(bullet_clean)
+            r_b.font.name, r_b.font.color.rgb = 'Times New Roman', RGBColor(0, 0, 0)
         else:
             p_n = doc.add_paragraph()
             if "Estimate" in clean:
@@ -372,14 +376,13 @@ st.divider()
 # --- 6. ARCHITECTURE & AWS SERVICES ---
 st.header("🏢 6. Architecture & AWS Services")
 st.subheader("🖥️ 6.1 Compute & Orchestration")
-# Now separate options
 compute_choices = st.multiselect("Select Primary Compute:", ["AWS Lambda", "Step Functions", "Amazon ECS / EKS(future)", "Hybrid"], default=["AWS Lambda", "Step Functions"])
 st.subheader("🤖 6.2 GenAI / ML Services")
 ai_svcs = st.multiselect("AI Services:", ["Amazon Bedrock", "Amazon SageMaker", "Rekognition", "Textract", "Comprehend", "Transcribe", "Translate"], default=["Amazon Bedrock"])
 st.subheader("💾 6.3 Storage & Search")
 st_svcs = st.multiselect("Storage:", ["Amazon S3", "DynamoDB", "OpenSearch", "RDS", "Vector DB (OpenSearch / Aurora PG)"], default=["Amazon S3"])
 st.subheader("🌐 6.4 UI Layer")
-ui_layer = st.selectbox("UI Choice:", ["Streamlit on S3", "CloudFront + Static UI", "Internal demo only", "No UI (API only)"], index=0)
+ui_layer = st.selectbox("UI:", ["Streamlit on S3", "CloudFront + Static UI", "Internal demo only", "No UI (API only)"], index=0)
 st.divider()
 
 # --- 7. NON-FUNCTIONAL REQUIREMENTS ---
@@ -424,7 +427,7 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
                 cost_table += f"| {label} | {v} | Estimate |\n"
             
             prompt = f"""
-            You are a professional enterprise AWS Solutions Architect. Generate a high-quality formal enterprise SOW for {sow_key} in the {final_industry} industry.
+            You are a professional enterprise AWS Solutions Architect. Generate a formal enterprise SOW for {sow_key} in the {final_industry} industry. 
             
             STRICT SECTION FLOW (Follow exactly 1 to 10):
             1 TABLE OF CONTENTS
@@ -448,12 +451,12 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
               - Generate specific measurable KPIs (e.g., ≥85% accuracy).
             5 SCOPE OF WORK – FUNCTIONAL CAPABILITIES
               Flows: {', '.join(sel_caps)} {custom_cap}. Integrations: {', '.join(sel_ints)}
-            6 ARCHITECTURE & AWS SERVICES
-              Detailed description of: {', '.join(compute_choices)}, {', '.join(ai_svcs)}, {', '.join(st_svcs)}, {ui_layer}
-            7 NON-FUNCTIONAL REQUIREMENTS
+            6 SOLUTION ARCHITECTURE
+              Include ONLY: "Specifics to be discussed basis POC"
+            7 ARCHITECTURE & AWS SERVICES
+              Services: {', '.join(compute_choices)}, {', '.join(ai_svcs)}, {', '.join(st_svcs)}, {ui_layer}
+            8 NON-FUNCTIONAL REQUIREMENTS
               Performance: {perf}. Security: {', '.join(sec)}
-            8 TIMELINE & PHASING
-              Duration: {poc_dur}. Phases: {get_md(st.session_state.timeline_phases)}
             9 COSTING INPUTS
               - {cost_table}
               - Ownership: {ownership}
@@ -465,12 +468,11 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
             - Start immediately with '1 TABLE OF CONTENTS'. DO NOT include intro fluff or hashtags before Section 1.
             - ALL SECTION TITLES (1-10) MUST BE CAPITALIZED.
             - Content must follow each heading immediately (Heading -> Content flow).
-            - Use formal Tables for roles, data, and costs.
-            - Tone: Corporate, technical, solution-oriented.
-            - Output should be compatible with conversion to Times New Roman, Black text.
-            - Ensure extremely high spelling accuracy and grammar.
+            - Tonality: Professional, technical, solution-oriented.
+            - Language: Black text only. Times New Roman style font.
+            - Ensure extremely high spelling accuracy and professional grammar.
             """
-            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering 1 to 10 exactly. No intro text. Capitalize all titles. Use Heading->Content flow. Professional tables. Spelling accuracy is critical."}]}})
+            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering 1 to 10 exactly. Start with '1 TABLE OF CONTENTS'. No intro text. Capitalize all titles. Use Heading->Content flow. Professional spelling is critical."}]}})
             if res:
                 st.session_state.generated_sow = res.json()['candidates'][0]['content']['parts'][0]['text']
                 st.rerun()
@@ -483,13 +485,11 @@ if st.session_state.generated_sow:
         st.session_state.generated_sow = st.text_area("Modify SOW Content:", st.session_state.generated_sow, height=600)
     with tab_p:
         st.markdown('<div class="sow-preview">', unsafe_allow_html=True)
-        # Rendering Visual Preview with Diagrams
         calc_url_p = CALCULATOR_LINKS.get(sow_key, "https://calculator.aws/")
         p_content = st.session_state.generated_sow.replace("Estimate", f'<a href="{calc_url_p}" target="_blank">Estimate</a>')
         
-        # Inject Solution Architecture Diagram in Section 6
-        # Using a regex that handles potential markdown artifacts or variations in title
-        match = re.search(r'(?i)(^6[\.\s]+ARCHITECTURE & AWS SERVICES.*)', p_content, re.MULTILINE)
+        # Regex to inject diagram after Section 6 title
+        match = re.search(r'(?i)(^6[\.\s]+SOLUTION ARCHITECTURE.*)', p_content, re.MULTILINE)
         if match:
             st.markdown(p_content[:match.end()], unsafe_allow_html=True)
             diag_out = SOW_DIAGRAM_MAP.get(sow_key)
