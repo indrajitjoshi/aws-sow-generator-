@@ -154,6 +154,9 @@ def create_docx_logic(text_content, branding, sow_name):
         line = lines[i].strip()
         if not line: i += 1; continue
         
+        # Determine if this is a bullet point before stripping for cleaning
+        is_bullet = line.startswith('- ') or line.startswith('* ')
+        
         # Clean markdown artifacts for identification
         clean_line = re.sub(r'#+\s*', '', line).strip()
         clean_line = re.sub(r'\*+', '', clean_line).strip()
@@ -236,15 +239,13 @@ def create_docx_logic(text_content, branding, sow_name):
             for run in h.runs: 
                 run.font.name = 'Times New Roman'
                 run.font.color.rgb = RGBColor(0, 0, 0)
-        elif line.startswith('- ') or line.startswith('* '):
+        elif is_bullet:
             p_b = doc.add_paragraph(style="List Bullet")
-            # Corrected logic: regex to strip markdown bullets accurately
             bullet_clean = re.sub(r'^[\-\*]\s*', '', line).strip()
             bullet_clean = re.sub(r'\*+', '', bullet_clean).strip()
             r_b = p_b.add_run(bullet_clean); r_b.font.name, r_b.font.color.rgb = 'Times New Roman', RGBColor(0, 0, 0)
         else:
             p_n = doc.add_paragraph()
-            # Handle Estimate links in plain text
             if "estimate" in clean_line.lower():
                 calc_url = CALCULATOR_LINKS.get(sow_name, "https://calculator.aws/")
                 start_idx = clean_line.lower().find("estimate")
@@ -432,53 +433,66 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
                 cost_table += f"| {label} | {v} | Estimate |\n"
             
             prompt = f"""
-            You are a professional enterprise AWS Solutions Architect. Generate a formal enterprise SOW for {sow_key} in the {final_industry} industry. 
-            
-            STRICT SECTION FLOW (Follow exactly 1 to 10):
-            1 TABLE OF CONTENTS
-            2 PROJECT OVERVIEW
-              - Objective: {biz_objective} (Rewrite into professional architect language)
-              - Team Roles:
-              ### Partner Executive Sponsor
-              {get_md(st.session_state.stakeholders["Partner"])}
-              ### Customer Executive Sponsor
-              {get_md(st.session_state.stakeholders["Customer"])}
-              ### AWS Executive Sponsor
-              {get_md(st.session_state.stakeholders["AWS"])}
-              ### Project Escalation Contacts
-              {get_md(st.session_state.stakeholders["Escalation"])}
-              - Outcomes: {', '.join(sel_outcomes)}
-            3 ASSUMPTIONS & DEPENDENCIES
-              3.1 Customer Dependencies: {', '.join(sel_deps)}
-              3.2 Data Characteristics: {data_meta}
-              3.3 Key Assumptions: {', '.join(sel_ass)} {custom_ass}
-            4 POC SUCCESS CRITERIA
-              Dimensions: {', '.join(sel_dims)}. Validation: {val_req}
-            5 SCOPE OF WORK – FUNCTIONAL CAPABILITIES
-              Flows: {', '.join(sel_caps)} {custom_cap}. Integrations: {', '.join(sel_ints)}
-            6 SOLUTION ARCHITECTURE
-              Include ONLY: "Specifics to be discussed basis POC"
-            7 ARCHITECTURE & AWS SERVICES
-              Services: {', '.join(compute_choices)}, {', '.join(ai_svcs)}, {', '.join(st_svcs)}, {ui_layer}
-            8 NON-FUNCTIONAL REQUIREMENTS
-              Performance: {perf}. Security: {', '.join(sec)}
-            9 TIMELINE & PHASING
-              Duration: {poc_dur}. Phases: {get_md(st.session_state.timeline_phases)}
-            10 FINAL OUTPUTS
-              Deliverables: {', '.join(delivs)}
-              Next Steps: {', '.join(nxt)}
-              Cost Ownership: {ownership}
-              Pricing: {cost_table}
+            You are a professional enterprise AWS Solutions Architect. Generate a formal enterprise SOW for {sow_key} in the {final_industry} industry.
 
-            STRICT FORMATTING RULES:
-            - Start immediately with '1 TABLE OF CONTENTS'. DO NOT include intro fluff, titles like 'Statement of Work', or hashtags before Section 1.
-            - ALL SECTION TITLES (1-10) MUST BE CAPITALIZED.
-            - Format: Heading immediately followed by its content (Heading -> Content flow).
-            - Tonality: Professional, Technical, Corporate.
-            - Language: Black text only. Times New Roman style font compatible.
-            - Ensure extremely high spelling accuracy.
+            STRICT GENERATION RULE: For each section from 1 to 10, first output the heading in ALL CAPS, followed immediately by its content. Never group all headings at the beginning.
+
+            STRUCTURE TO FOLLOW:
+            1 TABLE OF CONTENTS
+            Generate a standard TOC table.
+
+            2 PROJECT OVERVIEW
+            2.1 OBJECTIVE: {biz_objective} (Rewrite into professional architect language)
+            2.2 PROJECT SPONSOR(S) / STAKEHOLDER(S) / PROJECT TEAM:
+            Use these stakeholder tables:
+            ### Partner Executive Sponsor
+            {get_md(st.session_state.stakeholders["Partner"])}
+            ### Customer Executive Sponsor
+            {get_md(st.session_state.stakeholders["Customer"])}
+            ### AWS Executive Sponsor
+            {get_md(st.session_state.stakeholders["AWS"])}
+            ### Project Escalation Contacts
+            {get_md(st.session_state.stakeholders["Escalation"])}
+            2.3 KEY OUTCOMES EXPECTED: {', '.join(sel_outcomes)}
+
+            3 ASSUMPTIONS & DEPENDENCIES
+            3.1 CUSTOMER DEPENDENCIES: {', '.join(sel_deps)}
+            3.2 DATA CHARACTERISTICS: {data_meta}
+            3.3 KEY ASSUMPTIONS: {', '.join(sel_ass)} {custom_ass}
+
+            4 POC SUCCESS CRITERIA
+            Success Dimensions: {', '.join(sel_dims)}. Validation: {val_req}
+
+            5 SCOPE OF WORK – FUNCTIONAL CAPABILITIES
+            Functional Flows: {', '.join(sel_caps)} {custom_cap}. Integrations: {', '.join(sel_ints)}
+
+            6 SOLUTION ARCHITECTURE
+            Content: "Specifics to be discussed basis POC" (Note: Diagram will be auto-injected here).
+
+            7 ARCHITECTURE & AWS SERVICES
+            Describe services: {', '.join(compute_choices)}, {', '.join(ai_svcs)}, {', '.join(st_svcs)}, {ui_layer}
+
+            8 NON-FUNCTIONAL REQUIREMENTS
+            Performance: {perf}. Security: {', '.join(sec)}
+
+            9 TIMELINE & PHASING
+            Duration: {poc_dur}. Cost Ownership: {ownership}.
+            Phases:
+            {get_md(st.session_state.timeline_phases)}
+
+            10 FINAL OUTPUTS
+            Deliverables: {', '.join(delivs)}
+            Next Steps: {', '.join(nxt)}
+            Pricing Table:
+            {cost_table}
+
+            RULES:
+            - Start with '1 TABLE OF CONTENTS'. No intro text.
+            - ALL TITLES MUST BE IN CAPITAL LETTERS.
+            - Output Heading X, then Content X, then Heading Y, then Content Y.
+            - Use professional enterprise grammar. No markdown bolding (**).
             """
-            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering 1 to 10 exactly. Start with '1 TABLE OF CONTENTS'. No intro text. Capitalize all titles. Heading->Content flow. Black text only. Times New Roman style."}]}})
+            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering 1 to 10 exactly. Heading->Content flow. Black text only. Capitalize all titles."}]}})
             if res:
                 st.session_state.generated_sow = res.json()['candidates'][0]['content']['parts'][0]['text']
                 st.rerun()
