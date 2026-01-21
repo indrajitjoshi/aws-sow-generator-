@@ -93,7 +93,7 @@ def add_hyperlink(paragraph, text, url):
     new_run = OxmlElement('w:r')
     rPr = OxmlElement('w:rPr')
     c = OxmlElement('w:color')
-    c.set(qn('w:val'), '000000') # Set Black color
+    c.set(qn('w:val'), '000000') 
     u = OxmlElement('w:u')
     u.set(qn('w:val'), 'single')
     rPr.append(c); rPr.append(u); new_run.append(rPr)
@@ -102,6 +102,7 @@ def add_hyperlink(paragraph, text, url):
     paragraph._p.append(hyperlink)
 
 def create_docx_logic(text_content, branding, sow_name):
+    import docx
     from docx import Document
     from docx.shared import Inches, Pt, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -154,7 +155,7 @@ def create_docx_logic(text_content, branding, sow_name):
         line = lines[i].strip()
         if not line: i += 1; continue
         
-        # Determine if this is a bullet point before stripping for cleaning
+        # Determine if this is a bullet point
         is_bullet = line.startswith('- ') or line.startswith('* ')
         
         # Clean markdown artifacts for identification
@@ -211,7 +212,6 @@ def create_docx_logic(text_content, branding, sow_name):
                     cell = t.rows[0].cells[idx]
                     r_h = cell.paragraphs[0].add_run(h_text)
                     r_h.bold = True; r_h.font.name = 'Times New Roman'
-                    r_h.font.color.rgb = RGBColor(0, 0, 0)
                 for row_line in table_lines[2:]:
                     cells_data = [c.strip() for c in row_line.split('|') if c.strip()]
                     r = t.add_row().cells
@@ -241,11 +241,13 @@ def create_docx_logic(text_content, branding, sow_name):
                 run.font.color.rgb = RGBColor(0, 0, 0)
         elif is_bullet:
             p_b = doc.add_paragraph(style="List Bullet")
+            # Fixed the truncation logic that caused spelling errors
             bullet_clean = re.sub(r'^[\-\*]\s*', '', line).strip()
             bullet_clean = re.sub(r'\*+', '', bullet_clean).strip()
             r_b = p_b.add_run(bullet_clean); r_b.font.name, r_b.font.color.rgb = 'Times New Roman', RGBColor(0, 0, 0)
         else:
             p_n = doc.add_paragraph()
+            # Handle Estimate links in plain text
             if "estimate" in clean_line.lower():
                 calc_url = CALCULATOR_LINKS.get(sow_name, "https://calculator.aws/")
                 start_idx = clean_line.lower().find("estimate")
@@ -382,7 +384,7 @@ st.divider()
 # --- 6. ARCHITECTURE & AWS SERVICES ---
 st.header("🏢 6. Architecture & AWS Services")
 st.subheader("🖥️ 6.1 Compute & Orchestration")
-compute_choices = st.multiselect("Primary Options:", ["AWS Lambda", "Step Functions", "Amazon ECS / EKS(future)", "Hybrid"], default=["AWS Lambda", "Step Functions"])
+compute_choices = st.multiselect("Separate Options:", ["AWS Lambda", "Step Functions", "Amazon ECS / EKS(future)", "Hybrid"], default=["AWS Lambda", "Step Functions"])
 st.subheader("🤖 6.2 GenAI / ML Services")
 ai_svcs = st.multiselect("AI Services:", ["Amazon Bedrock", "Amazon SageMaker", "Rekognition", "Textract", "Comprehend", "Transcribe", "Translate"], default=["Amazon Bedrock"])
 st.subheader("💾 6.3 Storage & Search")
@@ -437,13 +439,13 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
 
             STRICT GENERATION RULE: For each section from 1 to 10, first output the heading in ALL CAPS, followed immediately by its content. Never group all headings at the beginning.
 
-            STRUCTURE TO FOLLOW:
+            STRUCTURE TO FOLLOW (Heading then its Content):
             1 TABLE OF CONTENTS
-            Generate a standard TOC table.
+            (Generate a standard TOC table list)
 
             2 PROJECT OVERVIEW
-            2.1 OBJECTIVE: {biz_objective} (Rewrite into professional architect language)
-            2.2 PROJECT SPONSOR(S) / STAKEHOLDER(S) / PROJECT TEAM:
+            ## 2.1 OBJECTIVE: {biz_objective}
+            ## 2.2 PROJECT SPONSOR(S) / STAKEHOLDER(S) / PROJECT TEAM:
             Use these stakeholder tables:
             ### Partner Executive Sponsor
             {get_md(st.session_state.stakeholders["Partner"])}
@@ -453,27 +455,27 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
             {get_md(st.session_state.stakeholders["AWS"])}
             ### Project Escalation Contacts
             {get_md(st.session_state.stakeholders["Escalation"])}
-            2.3 KEY OUTCOMES EXPECTED: {', '.join(sel_outcomes)}
+            ## 2.3 KEY OUTCOMES EXPECTED: {', '.join(sel_outcomes)}
 
             3 ASSUMPTIONS & DEPENDENCIES
-            3.1 CUSTOMER DEPENDENCIES: {', '.join(sel_deps)}
-            3.2 DATA CHARACTERISTICS: {data_meta}
-            3.3 KEY ASSUMPTIONS: {', '.join(sel_ass)} {custom_ass}
+            ## 3.1 CUSTOMER DEPENDENCIES: {', '.join(sel_deps)}
+            ## 3.2 DATA CHARACTERISTICS: {data_meta}
+            ## 3.3 KEY ASSUMPTIONS: {', '.join(sel_ass)} {custom_ass}
 
             4 POC SUCCESS CRITERIA
-            Success Dimensions: {', '.join(sel_dims)}. Validation: {val_req}
+            (Success Dimensions: {', '.join(sel_dims)}. Validation: {val_req})
 
             5 SCOPE OF WORK – FUNCTIONAL CAPABILITIES
-            Functional Flows: {', '.join(sel_caps)} {custom_cap}. Integrations: {', '.join(sel_ints)}
+            (Functional Flows: {', '.join(sel_caps)} {custom_cap}. Integrations: {', '.join(sel_ints)})
 
             6 SOLUTION ARCHITECTURE
             Content: "Specifics to be discussed basis POC" (Note: Diagram will be auto-injected here).
 
             7 ARCHITECTURE & AWS SERVICES
-            Describe services: {', '.join(compute_choices)}, {', '.join(ai_svcs)}, {', '.join(st_svcs)}, {ui_layer}
+            (Services description: {', '.join(compute_choices)}, {', '.join(ai_svcs)}, {', '.join(st_svcs)}, {ui_layer})
 
             8 NON-FUNCTIONAL REQUIREMENTS
-            Performance: {perf}. Security: {', '.join(sec)}
+            (Performance: {perf}. Security: {', '.join(sec)})
 
             9 TIMELINE & PHASING
             Duration: {poc_dur}. Cost Ownership: {ownership}.
@@ -483,14 +485,14 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
             10 FINAL OUTPUTS
             Deliverables: {', '.join(delivs)}
             Next Steps: {', '.join(nxt)}
-            Pricing Table:
+            Pricing:
             {cost_table}
 
             RULES:
-            - Start with '1 TABLE OF CONTENTS'. No intro text.
-            - ALL TITLES MUST BE IN CAPITAL LETTERS.
+            - Start immediately with '1 TABLE OF CONTENTS'. No intro text or fluff.
+            - ALL MAIN TITLES MUST BE IN CAPITAL LETTERS.
             - Output Heading X, then Content X, then Heading Y, then Content Y.
-            - Use professional enterprise grammar. No markdown bolding (**).
+            - Tone: Corporate, technical, enterprise-ready. No markdown bolding (**).
             """
             res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering 1 to 10 exactly. Heading->Content flow. Black text only. Capitalize all titles."}]}})
             if res:
@@ -502,18 +504,18 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
 if st.session_state.generated_sow:
     st.divider(); tab_e, tab_p = st.tabs(["✍️ Editor", "📄 Visual Preview"])
     with tab_e: 
-        st.session_state.generated_sow = st.text_area("Modify SOW:", st.session_state.generated_sow, height=600)
+        st.session_state.generated_sow = st.text_area("Modify SOW Content:", st.session_state.generated_sow, height=600)
     with tab_p:
         st.markdown('<div class="sow-preview">', unsafe_allow_html=True)
         calc_url_p = CALCULATOR_LINKS.get(sow_key, "https://calculator.aws/")
         p_content = st.session_state.generated_sow.replace("Estimate", f'<a href="{calc_url_p}" target="_blank">Estimate</a>')
         
-        # Injects Solution Architecture Diagram in Section 6
+        # Inject Solution Architecture Diagram in Section 6
         match = re.search(r'(?i)(^6\s+SOLUTION ARCHITECTURE.*)', p_content, re.MULTILINE)
         if match:
             st.markdown(p_content[:match.end()], unsafe_allow_html=True)
             diag_out = SOW_DIAGRAM_MAP.get(sow_key)
-            if diag_out and os.path.exists(diag_out): st.image(diag_out, caption=f"{sow_key} Architecture")
+            if diag_out and os.path.exists(diag_out): st.image(diag_out, caption=f"{sow_key} Architecture Diagram")
             st.markdown(p_content[match.end():], unsafe_allow_html=True)
         else:
             st.markdown(p_content, unsafe_allow_html=True)
