@@ -242,7 +242,7 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
     lines = text_content.split('\n')
     i, in_toc_section, content_started = 0, False, False
     
-    # Main Section Header Pattern Map
+    # Main Section Header Pattern Map (Renumbered Pricing to 9, Timeline to 10)
     header_patterns = {
         "1": "TABLE OF CONTENTS", 
         "2": "PROJECT OVERVIEW", 
@@ -252,8 +252,8 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
         "6": "SOLUTION ARCHITECTURE", 
         "7": "ARCHITECTURE & AWS SERVICES",
         "8": "NON-FUNCTIONAL REQUIREMENTS",
-        "9": "TIMELINE & PHASING",
-        "10": "COST ESTIMATION TABLE", 
+        "9": "COST ESTIMATION",
+        "10": "TIMELINE & PHASING", 
         "11": "RESOURCES & COST ESTIMATES"
     }
     
@@ -267,14 +267,13 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
         clean_text = re.sub(r'^#+\s*', '', line_clean).strip()
         upper_text = clean_text.upper()
         
-        # Robust Header Detection (matches "1 Title", "1. Title", etc)
+        # Robust Header Detection
         current_header_id = None
         for h_id, pattern_title in header_patterns.items():
             if re.match(rf"^{h_id}[\.\s]+{re.escape(pattern_title)}", upper_text):
                 current_header_id = h_id
                 break
         
-        # Skip technical placeholders/instructions
         if any(kw in upper_text for kw in ["PLACEHOLDER FOR COST TABLE", "SPECIFICS TO BE DISCUSSED BASIS POC", "USE THESE EXACT NUMBERS"]):
             i += 1; continue
             
@@ -291,7 +290,7 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
                 rendered_sections[current_header_id] = True
                 if current_header_id == "1": in_toc_section = True
                 
-                # Dynamic Asset Injection
+                # Injection logic
                 if current_header_id == "6":
                     diag = SOW_DIAGRAM_MAP.get(sow_type_name)
                     if diag and os.path.exists(diag):
@@ -299,14 +298,14 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
                         cap = doc.add_paragraph(f"{sow_type_name} – Architecture Diagram")
                         cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 
-                if current_header_id == "10": 
+                # Pricing table injection at Section 9
+                if current_header_id == "9": 
                     add_infra_cost_table(doc, sow_type_name, text_content)
             i += 1; continue
             
         # Table Processing
         if line.startswith('|') and i + 1 < len(lines) and lines[i+1].strip().startswith('|'):
-            # Only render AI tables if they aren't redundant cost tables (which we inject manually)
-            if rendered_sections["10"] and not rendered_sections["11"]:
+            if rendered_sections["9"] and not rendered_sections["11"]:
                 i += 1; continue
                 
             table_lines = []
@@ -323,7 +322,6 @@ def create_docx_logic(text_content, branding_info, sow_type_name):
                         if idx < len(row_cells): row_cells[idx].text = c
             continue
             
-        # Headings and Bullets
         if line.startswith('## '):
             h = doc.add_heading(clean_text, level=2)
             if in_toc_section: h.paragraph_format.left_indent = Inches(0.4)
@@ -354,6 +352,7 @@ def call_gemini_with_retry(api_key, payload):
 # --- INITIALIZATION ---
 if 'generated_sow' not in st.session_state: st.session_state.generated_sow = ""
 if 'stakeholders' not in st.session_state:
+    import pandas as pd
     st.session_state.stakeholders = {
         "Partner": pd.DataFrame([{"Name": "Gaurav Kankaria", "Title": "Head of Analytics & ML", "Email": "gaurav.kankaria@oneture.com"}]),
         "Customer": pd.DataFrame([{"Name": "Cheten Dev", "Title": "Head of Product Design", "Email": "cheten.dev@nykaa.com"}]),
@@ -507,6 +506,11 @@ with col8_2:
     st.subheader("📈 8.2 Phase Breakdown")
     st.session_state.timeline_phases = st.data_editor(st.session_state.timeline_phases, num_rows="dynamic", use_container_width=True, key="ed_timeline")
 
+st.divider()
+# --- 9. Cost Ownership (New Dropdown) ---
+st.header("💰 9. Cost Estimation & Ownership")
+cost_ownership = st.selectbox("9.2 Cost Ownership (Closed-ended):", ["Funded by AWS", "Funded by Partner", "Funded by Customer", "Shared"], index=2)
+
 # --- GENERATION ---
 if st.button("✨ Generate SOW Document", type="primary", use_container_width=True):
     if not api_key: st.warning("⚠️ Enter Gemini API Key.")
@@ -533,7 +537,7 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             - Every heading MUST be immediately followed by its detailed content.
             - Never repeat a main heading.
             
-            STRICT SECTION FLOW:
+            STRICT SECTION FLOW (1-11):
             1 TABLE OF CONTENTS
             2 PROJECT OVERVIEW
               - Objective: {objective}
@@ -555,9 +559,11 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
             6 SOLUTION ARCHITECTURE (Include ONLY: "Specifics to be discussed basis POC".)
             7 ARCHITECTURE & AWS SERVICES (Describe Compute: {', '.join(compute_option)}, AI: {', '.join(ml_services)}, and Storage: {', '.join(storage_services)}.)
             8 NON-FUNCTIONAL REQUIREMENTS (Performance: {perf_expectation}. Security: {', '.join(sec_compliance)}.)
-            9 TIMELINE & PHASING (Duration: {final_duration}. Phases: {get_md(st.session_state.timeline_phases)}.)
-            10 COST ESTIMATION TABLE (Provide strictly this pricing table only: {dynamic_table_prompt})
-            11 RESOURCES & COST ESTIMATES (Detail professional services roles.)
+            9 COST ESTIMATION
+              9.1 Price Calculator (Provide strictly this table only: {dynamic_table_prompt})
+              9.2 Cost Ownership: {cost_ownership}
+            10 TIMELINE & PHASING (Duration: {final_duration}. Phases: {get_md(st.session_state.timeline_phases)}.)
+            11 RESOURCES & COST ESTIMATES
             """
             res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt_text}]}], "systemInstruction": {"parts": [{"text": "Follow numbering 1 to 11 exactly. No repeating headers. Every header must be followed by content."}]}})
             if res:
