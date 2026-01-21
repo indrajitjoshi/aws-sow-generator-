@@ -11,12 +11,12 @@ import pandas as pd
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.join(BASE_DIR, "diagrams")
 
-# Static assets (ensure these files exist in the /diagrams folder)
+# Static assets
 AWS_PN_LOGO = os.path.join(ASSETS_DIR, "aws partner logo.jpg")
 ONETURE_LOGO = os.path.join(ASSETS_DIR, "oneture logo1.jpg")
 AWS_ADV_LOGO = os.path.join(ASSETS_DIR, "aws advanced logo1.jpg")
 
-# Mapped Infra Costs
+# Cost Data Map
 SOW_COST_TABLE_MAP = { 
     "L1 Support Bot POC SOW": { "poc_cost": "3,536.40 USD" }, 
     "Beauty Advisor POC SOW": { 
@@ -32,13 +32,12 @@ SOW_COST_TABLE_MAP = {
     "PoC Scope Document": { "amazon_bedrock": "1,000 USD", "total": "$ 3,150" }
 }
 
-# Mapped Calculator Links
+# AWS Calculator Links
 CALCULATOR_LINKS = {
     "L1 Support Bot POC SOW": "https://calculator.aws/#/estimate?id=211ea64cba5a8f5dc09805f4ad1a1e598ef5238b",
     "Ready Search POC Scope of Work Document": "https://calculator.aws/#/estimate?id=f8bc48f1ae566b8ea1241994328978e7e86d3490",
     "AI based Image Enhancement POC SOW": "https://calculator.aws/#/estimate?id=9a3e593b92b796acecf31a78aec17d7eb957d1e5",
     "Beauty Advisor POC SOW": "https://calculator.aws/#/estimate?id=3f89756a35f7bac7b2cd88d95f3e9aba9be9b0eb",
-    "Beauty Advisor Production": "https://calculator.aws/#/estimate?id=4d7f092e819c799f680fd14f8de3f181f565c48e",
     "AI based Image Inspection POC SOW": "https://calculator.aws/#/estimate?id=72c56f93b0c0e101d67a46af4f4fe9886eb93342",
     "Gen AI for SOP POC SOW": "https://calculator.aws/#/estimate?id=c21e9b242964724bf83556cfeee821473bb935d1",
     "Project Scope Document": "https://calculator.aws/#/estimate?id=37339d6e34c73596559fe09ca16a0ac2ec4c4252",
@@ -59,48 +58,24 @@ SOW_DIAGRAM_MAP = {
 }
 
 # --- CONFIGURATION ---
-st.set_page_config(
-    page_title="GenAI SOW Architect", 
-    layout="wide", 
-    page_icon="📄",
-    initial_sidebar_state="expanded"
-)
+st.set_page_config(page_title="GenAI SOW Architect", layout="wide", page_icon="📄")
 
-# Custom CSS for UI
 st.markdown("""
     <style>
     .main { background-color: #f8fafc; }
-    .stButton>button { border-radius: 8px; font-weight: 600; }
-    .stTextArea textarea { border-radius: 10px; }
-    .stTextInput input { border-radius: 8px; }
-    .block-container { padding-top: 1.5rem; }
-    .sow-preview {
-        background-color: white;
-        padding: 40px;
-        border-radius: 12px;
-        border: 1px solid #e2e8f0;
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        line-height: 1.7;
-        color: #1e293b;
-        box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-    }
-    h1, h2, h3 { color: #0f172a; }
-    .stTabs [data-baseweb="tab-list"] { gap: 24px; }
-    .stTabs [data-baseweb="tab"] { height: 50px; white-space: pre-wrap; font-weight: 600; }
-    [data-testid="stExpander"] { border: 1px solid #e2e8f0; border-radius: 10px; background: white; margin-bottom: 1rem; }
+    .stTabs [data-baseweb="tab"] { font-weight: 600; }
     .stakeholder-header { 
-        background-color: #f1f5f9; 
-        padding: 8px 12px; 
-        border-radius: 6px; 
-        margin-bottom: 10px; 
-        font-weight: bold;
-        color: #334155;
-        border-left: 4px solid #3b82f6;
+        background-color: #f1f5f9; padding: 8px 12px; border-radius: 6px; 
+        margin-top: 10px; font-weight: bold; border-left: 4px solid #3b82f6;
+    }
+    .sow-preview {
+        background-color: white; padding: 40px; border-radius: 12px;
+        border: 1px solid #e2e8f0; line-height: 1.7; color: #1e293b;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# Helper for docx hyperlinks
+# Helper functions
 def add_hyperlink(paragraph, text, url):
     import docx.oxml.shared
     import docx.opc.constants
@@ -114,228 +89,115 @@ def add_hyperlink(paragraph, text, url):
     c.set(docx.oxml.shared.qn('w:val'), '0000FF')
     u = docx.oxml.shared.OxmlElement('w:u')
     u.set(docx.oxml.shared.qn('w:val'), 'single')
-    rPr.append(c)
-    rPr.append(u)
-    new_run.append(rPr)
-    t = docx.oxml.shared.OxmlElement('w:t')
-    t.text = text
-    new_run.append(t)
-    hyperlink.append(new_run)
+    rPr.append(c); rPr.append(u); new_run.append(rPr)
+    t = docx.oxml.shared.OxmlElement('w:t'); t.text = text
+    new_run.append(t); hyperlink.append(new_run)
     paragraph._p.append(hyperlink)
-    return hyperlink
 
-def add_poc_calculation_table(doc):
-    doc.add_paragraph("The above numbers are calculated basis the following:")
-    table = doc.add_table(rows=1, cols=3)
-    table.style = "Table Grid"
-    hdr = table.rows[0].cells
-    hdr[0].text = "Particulars"
-    hdr[1].text = "Value (in Dollar)"
-    hdr[2].text = "Remarks"
-    data = [
-        ("Number of documents", "200", "Assuming 5 interactions for finalising each product copy"),
-        ("Input Tokens per document", "10,00,000", ""),
-        ("Input Token Cost per 1,00,000 Tokens", "0", "Anthropic Claude 3 Sonnet Model"),
-        ("Total Input Cost in USD", "600", ""),
-        ("Output Tokens per document", "50,000", ""),
-        ("Output Token Cost per 1,00,000 Tokens", "0", "Anthropic Claude 3 Sonnet Model"),
-        ("Total Output Cost in USD", "150", ""),
-        ("Total Cost in USD", "750", ""),
-        ("", "", ""),
-        ("Tokens for Embedding Model", "2,50,00,00,000", ""),
-        ("Input Cost per 1,00,000 Tokens", "0", "Cohere English Model"),
-        ("Total Embedding Model Cost in USD", "250", ""),
-        ("", "", ""),
-        ("Total Cost in USD per month", "1,000", "")
-    ]
-    for row in data:
-        cells = table.add_row().cells
-        for i, val in enumerate(row):
-            cells[i].text = val
-
-def add_infra_cost_table(doc, sow_type_name, text_content):
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
-    cost_data = SOW_COST_TABLE_MAP.get(sow_type_name)
+def add_infra_cost_table(doc, sow_name, data):
+    cost_data = SOW_COST_TABLE_MAP.get(sow_name)
     if not cost_data: return
-    calc_url = CALCULATOR_LINKS.get(sow_type_name, "https://calculator.aws/#/")
-    if sow_type_name == "Beauty Advisor POC SOW" and "Production Development" in text_content:
-        calc_url = CALCULATOR_LINKS["Beauty Advisor Production"]
-    table = doc.add_table(rows=1, cols=3)
-    table.style = "Table Grid"
+    calc_url = CALCULATOR_LINKS.get(sow_name, "https://calculator.aws/#/")
+    table = doc.add_table(rows=1, cols=3); table.style = "Table Grid"
     hdr = table.rows[0].cells
-    hdr[0].text = "System"
-    hdr[1].text = "Infra Cost / month"
-    hdr[2].text = "AWS Calculator Cost"
-    rows_to_add = []
-    if "poc_cost" in cost_data: rows_to_add.append(("POC", cost_data["poc_cost"]))
-    if "prod_cost" in cost_data: rows_to_add.append(("Production", cost_data["prod_cost"]))
-    if "amazon_bedrock" in cost_data: rows_to_add.append(("Amazon Bedrock", cost_data["amazon_bedrock"]))
-    if "total" in cost_data: rows_to_add.append(("Total", cost_data["total"]))
-    for label, cost in rows_to_add:
-        r = table.add_row().cells
-        r[0].text = label
-        r[1].text = cost
-        p = r[2].paragraphs[0]
-        add_hyperlink(p, "Estimate", calc_url)
-    for row in table.rows:
-        for cell in row.cells:
-            for p in cell.paragraphs: p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    if sow_type_name == "PoC Scope Document":
-        doc.add_paragraph("")
-        add_poc_calculation_table(doc)
+    hdr[0].text = "System"; hdr[1].text = "Infra Cost / month"; hdr[2].text = "AWS Calculator Cost"
+    for label, cost_key in [("POC", "poc_cost"), ("Production", "prod_cost")]:
+        if cost_key in cost_data:
+            r = table.add_row().cells
+            r[0].text = label; r[1].text = cost_data[cost_key]
+            add_hyperlink(r[2].paragraphs[0], "Estimate", calc_url)
 
-def create_docx_logic(text_content, branding_info, sow_type_name):
+def create_docx_logic(text_content, branding, sow_name):
     from docx import Document
     from docx.shared import Inches, Pt
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     doc = Document()
     
-    # State tracking
-    rendered_sections = {str(i): False for i in range(1, 12)}
-    
-    # --- PAGE 1: COVER PAGE ---
-    p_top = doc.add_paragraph()
+    # Page 1 Cover
+    p = doc.add_paragraph()
     if os.path.exists(AWS_PN_LOGO): doc.add_picture(AWS_PN_LOGO, width=Inches(1.6))
     doc.add_paragraph("\n" * 3)
-    
-    title_p = doc.add_paragraph()
-    title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = title_p.add_run(branding_info['sow_name'])
-    run.font.size, run.bold = Pt(26), True
-    
-    subtitle_p = doc.add_paragraph()
-    subtitle_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    subtitle_p.add_run("Scope of Work Document").font.size = Pt(14)
-    
+    t = doc.add_paragraph(); t.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = t.add_run(branding['sow_name']); run.font.size = Pt(26); run.bold = True
+    stitle = doc.add_paragraph(); stitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    stitle.add_run("Scope of Work Document").font.size = Pt(14)
     doc.add_paragraph("\n" * 4)
     
-    logo_table = doc.add_table(rows=1, cols=3)
-    logo_table.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    
-    # Logos
-    cell = logo_table.rows[0].cells[0]
-    cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-    if branding_info.get("customer_logo_bytes"): 
-        cell.paragraphs[0].add_run().add_picture(io.BytesIO(branding_info["customer_logo_bytes"]), width=Inches(1.8))
-    else: 
-        cell.paragraphs[0].add_run("Customer Logo").bold = True
-    
-    cell = logo_table.rows[0].cells[1]
-    cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-    if os.path.exists(ONETURE_LOGO): cell.paragraphs[0].add_run().add_picture(ONETURE_LOGO, width=Inches(2.2))
-    
-    cell = logo_table.rows[0].cells[2]
-    cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-    if os.path.exists(AWS_ADV_LOGO): cell.paragraphs[0].add_run().add_picture(AWS_ADV_LOGO, width=Inches(1.8))
+    l_table = doc.add_table(rows=1, cols=3); l_table.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    if branding.get("customer_logo_bytes"):
+        l_table.rows[0].cells[0].paragraphs[0].add_run().add_picture(io.BytesIO(branding["customer_logo_bytes"]), width=Inches(1.8))
+    if os.path.exists(ONETURE_LOGO):
+        l_table.rows[0].cells[1].paragraphs[0].add_run().add_picture(ONETURE_LOGO, width=Inches(2.2))
+    if os.path.exists(AWS_ADV_LOGO):
+        l_table.rows[0].cells[2].paragraphs[0].add_run().add_picture(AWS_ADV_LOGO, width=Inches(1.8))
     
     doc.add_paragraph("\n" * 3)
-    date_p = doc.add_paragraph()
-    date_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    date_p.add_run(branding_info["doc_date_str"]).bold = True
-    
+    dt = doc.add_paragraph(); dt.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    dt.add_run(branding["doc_date_str"]).bold = True
     doc.add_page_break()
-    
-    # --- CONTENT PROCESSING ---
-    style = doc.styles['Normal']
-    style.font.name, style.font.size = 'Arial', Pt(11)
-    
-    lines = text_content.split('\n')
-    i, in_toc_section, content_started = 0, False, False
-    
-    # Main Section Header Pattern Map (Renumbered Pricing to 9, Timeline to 10)
-    header_patterns = {
-        "1": "TABLE OF CONTENTS", 
-        "2": "PROJECT OVERVIEW", 
-        "3": "ASSUMPTIONS & DEPENDENCIES", 
-        "4": "POC SUCCESS CRITERIA",
-        "5": "SCOPE OF WORK – FUNCTIONAL CAPABILITIES",
-        "6": "SOLUTION ARCHITECTURE", 
-        "7": "ARCHITECTURE & AWS SERVICES",
-        "8": "NON-FUNCTIONAL REQUIREMENTS",
-        "9": "COST ESTIMATION",
-        "10": "TIMELINE & PHASING", 
-        "11": "RESOURCES & COST ESTIMATES"
+
+    # Section Headers Mapping
+    headers = {
+        "1": "TABLE OF CONTENTS", "2": "PROJECT OVERVIEW", "3": "ASSUMPTIONS & DEPENDENCIES",
+        "4": "POC SUCCESS CRITERIA", "5": "SCOPE OF WORK – FUNCTIONAL CAPABILITIES",
+        "6": "SOLUTION ARCHITECTURE", "7": "ARCHITECTURE & AWS SERVICES",
+        "8": "NON-FUNCTIONAL REQUIREMENTS", "9": "TIMELINE & PHASING", "10": "FINAL OUTPUTS"
     }
-    
+
+    lines = text_content.split('\n')
+    rendered = {str(i): False for i in range(1, 11)}
+    i, in_toc = 0, False
+
     while i < len(lines):
         line = lines[i].strip()
-        if not line:
-            if i > 0 and lines[i-1].strip() and content_started: doc.add_paragraph("")
-            i += 1; continue
-            
-        line_clean = re.sub(r'\*+', '', line).strip()
-        clean_text = re.sub(r'^#+\s*', '', line_clean).strip()
-        upper_text = clean_text.upper()
+        if not line: i += 1; continue
+        clean = re.sub(r'\*+', '', line).strip()
+        upper = clean.upper()
+
+        current_id = None
+        for h_id, h_title in headers.items():
+            if re.match(rf"^{h_id}[\.\s]+{re.escape(h_title)}", upper):
+                current_id = h_id; break
         
-        # Robust Header Detection
-        current_header_id = None
-        for h_id, pattern_title in header_patterns.items():
-            if re.match(rf"^{h_id}[\.\s]+{re.escape(pattern_title)}", upper_text):
-                current_header_id = h_id
-                break
-        
-        if any(kw in upper_text for kw in ["PLACEHOLDER FOR COST TABLE", "SPECIFICS TO BE DISCUSSED BASIS POC", "USE THESE EXACT NUMBERS"]):
-            i += 1; continue
-            
-        if not content_started:
-            if current_header_id == "1": content_started = True
-            else: i += 1; continue
-        
-        if current_header_id:
-            if in_toc_section and current_header_id == "2":
-                in_toc_section = False; doc.add_page_break()
-            
-            if not rendered_sections[current_header_id]:
-                doc.add_heading(clean_text, level=1)
-                rendered_sections[current_header_id] = True
-                if current_header_id == "1": in_toc_section = True
-                
-                # Injection logic
-                if current_header_id == "6":
-                    diag = SOW_DIAGRAM_MAP.get(sow_type_name)
+        if current_id:
+            if in_toc and current_id == "2": doc.add_page_break(); in_toc = False
+            if not rendered[current_id]:
+                doc.add_heading(clean, level=1)
+                rendered[current_id] = True
+                if current_id == "1": in_toc = True
+                if current_id == "6":
+                    diag = SOW_DIAGRAM_MAP.get(sow_name)
                     if diag and os.path.exists(diag):
-                        doc.add_paragraph(""); doc.add_picture(diag, width=Inches(6.0))
-                        cap = doc.add_paragraph(f"{sow_type_name} – Architecture Diagram")
-                        cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                
-                # Pricing table injection at Section 9
-                if current_header_id == "9": 
-                    add_infra_cost_table(doc, sow_type_name, text_content)
+                        doc.add_picture(diag, width=Inches(6.0))
+                        doc.add_paragraph(f"{sow_name} – Architecture Diagram").alignment = WD_ALIGN_PARAGRAPH.CENTER
+                if current_id == "9": # We usually put the cost table near the end of 9/10
+                    pass
             i += 1; continue
             
-        # Table Processing
         if line.startswith('|') and i + 1 < len(lines) and lines[i+1].strip().startswith('|'):
-            if rendered_sections["9"] and not rendered_sections["11"]:
-                i += 1; continue
-                
             table_lines = []
             while i < len(lines) and lines[i].strip().startswith('|'):
                 table_lines.append(lines[i]); i += 1
             if len(table_lines) >= 3:
-                headers = [c.strip() for c in table_lines[0].split('|') if c.strip()]
-                table = doc.add_table(rows=1, cols=len(headers)); table.style = "Table Grid"
-                for idx, h in enumerate(headers): table.rows[0].cells[idx].text = h
+                cols = [c.strip() for c in table_lines[0].split('|') if c.strip()]
+                t = doc.add_table(rows=1, cols=len(cols)); t.style = "Table Grid"
+                for idx, h in enumerate(cols): t.rows[0].cells[idx].text = h
                 for row_line in table_lines[2:]:
-                    row_cells = table.add_row().cells
                     cells = [c.strip() for c in row_line.split('|') if c.strip()]
-                    for idx, c in enumerate(cells):
-                        if idx < len(row_cells): row_cells[idx].text = c
+                    r = t.add_row().cells
+                    for idx, c in enumerate(cells): 
+                        if idx < len(r): r[idx].text = c
             continue
-            
-        if line.startswith('## '):
-            h = doc.add_heading(clean_text, level=2)
-            if in_toc_section: h.paragraph_format.left_indent = Inches(0.4)
-        elif line.startswith('### '):
-            h = doc.add_heading(clean_text, level=3)
-            if in_toc_section: h.paragraph_format.left_indent = Inches(0.8)
-        elif line.startswith('- ') or line.startswith('* '):
-            p = doc.add_paragraph(clean_text[2:] if (clean_text.startswith('- ') or clean_text.startswith('* ')) else clean_text, style="List Bullet")
-            if in_toc_section: p.paragraph_format.left_indent = Inches(0.4)
+
+        if line.startswith('## '): doc.add_heading(clean, level=2)
+        elif line.startswith('### '): doc.add_heading(clean, level=3)
+        elif line.startswith('- ') or line.startswith('* '): doc.add_paragraph(clean[2:], style="List Bullet")
         else:
-            p = doc.add_paragraph(clean_text)
-            bold_kw = ["PARTNER EXECUTIVE SPONSOR", "CUSTOMER EXECUTIVE SPONSOR", "AWS EXECUTIVE SPONSOR", "PROJECT ESCALATION CONTACTS", "ASSUMPTIONS:", "DEPENDENCIES:"]
-            if any(k in upper_text for k in bold_kw) and p.runs: p.runs[0].bold = True
+            p = doc.add_paragraph(clean)
+            if any(k in upper for k in ["SPONSOR", "CONTACTS", "ASSUMPTIONS:", "DEPENDENCIES:"]):
+                if p.runs: p.runs[0].bold = True
         i += 1
+        
     bio = io.BytesIO(); doc.save(bio); return bio.getvalue()
 
 def call_gemini_with_retry(api_key, payload):
@@ -345,14 +207,13 @@ def call_gemini_with_retry(api_key, payload):
             res = requests.post(url, json=payload)
             if res.status_code == 200: return res, None
             if res.status_code in [503, 429]: time.sleep(2**attempt); continue
-            return None, f"API Error {res.status_code}: {res.text}"
-        except Exception: time.sleep(2**attempt)
-    return None, "Model overloaded. Please retry."
+            return None, f"API Error {res.status_code}"
+        except: time.sleep(2**attempt)
+    return None, "Model overloaded."
 
 # --- INITIALIZATION ---
 if 'generated_sow' not in st.session_state: st.session_state.generated_sow = ""
 if 'stakeholders' not in st.session_state:
-    import pandas as pd
     st.session_state.stakeholders = {
         "Partner": pd.DataFrame([{"Name": "Gaurav Kankaria", "Title": "Head of Analytics & ML", "Email": "gaurav.kankaria@oneture.com"}]),
         "Customer": pd.DataFrame([{"Name": "Cheten Dev", "Title": "Head of Product Design", "Email": "cheten.dev@nykaa.com"}]),
@@ -361,187 +222,157 @@ if 'stakeholders' not in st.session_state:
     }
 if 'timeline_phases' not in st.session_state:
     st.session_state.timeline_phases = pd.DataFrame([
-        {"Phase": "Infra setup", "Week Range": "Week 1"},
-        {"Phase": "Core workflows", "Week Range": "Week 2 - 3"},
-        {"Phase": "Testing & validation", "Week Range": "Week 3 - 4"},
-        {"Phase": "Demo & feedback", "Week Range": "Week 4"}
+        {"Phase": "Infra setup", "Week": "Week 1"}, {"Phase": "Core workflows", "Week": "Week 2-3"},
+        {"Phase": "Testing & validation", "Week": "Week 3-4"}, {"Phase": "Demo & feedback", "Week": "Week 4"}
     ])
 
-def clear_sow(): st.session_state.generated_sow = ""
+def reset(): st.session_state.generated_sow = ""; st.rerun()
 
-# --- SIDEBAR: PROJECT INTAKE ---
+# --- 1. PROJECT INTAKE ---
 with st.sidebar:
     st.image("https://img.icons8.com/fluency/96/artificial-intelligence.png", width=60)
-    st.title("SOW Architect")
-    st.caption("Enterprise POC/MVP Engine")
+    st.title("Architect Pro")
     with st.expander("🔑 API Key", expanded=False): api_key = st.text_input("Gemini API Key", type="password")
     st.divider()
     st.header("📋 1. Project Intake")
-    selected_sow_name = st.selectbox("1.1 Scope of Work Type", list(SOW_COST_TABLE_MAP.keys()))
-    engagement_type = st.selectbox("1.2 Engagement Type (Closed-ended)", ["Proof of Concept (PoC)", "Pilot", "MVP", "Production Rollout", "Assessment / Discovery", "Support"])
-    st.divider()
-    industry_options = ["Retail / E-commerce", "BFSI", "Manufacturing", "Telecom", "Healthcare", "Energy / Utilities", "Logistics", "Media", "Government", "Other (specify)"]
-    industry_type = st.selectbox("1.3 Industry / Domain", industry_options)
-    final_industry = st.text_input("Specify Industry", placeholder="Enter industry...") if industry_type == "Other (specify)" else industry_type
-    if st.button("🗑️ Reset All Fields", on_click=clear_sow, use_container_width=True): st.rerun()
+    sow_opts = ["1. L1 Support Bot POC SOW", "2. Beauty Advisor POC SOW", "3. Ready Search POC Scope of Work Document", "4. AI based Image Enhancement POC SOW", "5. AI based Image Inspection POC SOW", "6. Gen AI for SOP POC SOW", "7. Project Scope Document", "8. Gen AI Speech To Speech", "9. PoC Scope Document"]
+    solution_type = st.selectbox("1.1 Solution Type", sow_opts)
+    sow_key = solution_type.split(". ", 1)[1] if ". " in solution_type else solution_type
+    
+    engagement_type = st.selectbox("1.2 Engagement Type", ["Proof of Concept (PoC)", "Pilot", "MVP", "Production Rollout", "Assessment / Discovery", "Support"])
+    
+    industry_opts = ["Retail / E-commerce", "BFSI", "Manufacturing", "Telecom", "Healthcare", "Energy / Utilities", "Logistics", "Media", "Government", "Other (specify)"]
+    industry_type = st.selectbox("1.3 Industry / Domain", industry_opts)
+    final_industry = st.text_input("Specify Industry:", placeholder="Enter industry...") if industry_type == "Other (specify)" else industry_type
+    
+    if st.button("🗑️ Reset All", on_click=reset, use_container_width=True): st.rerun()
 
 # --- MAIN UI ---
 st.title("🚀 GenAI Scope of Work Architect")
 st.header("📸 Cover Page Branding")
 col_cov1, col_cov2 = st.columns(2)
-with col_cov1: customer_logo = st.file_uploader("Upload Customer Logo (Optional)", type=["png", "jpg", "jpeg"])
+with col_cov1: customer_logo = st.file_uploader("Upload Customer Logo", type=["png", "jpg", "jpeg"])
 with col_cov2: doc_date = st.date_input("Document Date", date.today())
 st.divider()
 
-st.header("2. Objectives & Stakeholders")
-st.subheader("🎯 2.1 Objective")
-objective = st.text_area("Define the core business objective:", placeholder="e.g., Development of a Gen AI based WIMO Bot...", height=100)
-outcomes = st.multiselect("Select success metrics:", ["Reduced Response Time", "Automated SOP Mapping", "Cost Savings", "Higher Accuracy", "Metadata Richness", "Revenue Growth", "Security Compliance", "Scalability", "Integration Feasibility"], default=["Higher Accuracy", "Cost Savings"])
+# --- 2. PROJECT OVERVIEW ---
+st.header("2. Project Overview Section")
+st.subheader("🎯 2.1 Business Objective")
+biz_objective = st.text_area("What business problem is the customer trying to solve?", placeholder="Example: Reduce manual effort, improve accuracy, enable faster decision-making...", height=100)
+st.subheader("📈 2.2 Key Outcomes Expected")
+sel_outcomes = st.multiselect("Outcomes:", ["Reduce manual effort", "Improve accuracy / quality", "Faster turnaround time", "Cost reduction", "Revenue uplift", "Compliance improvement", "Better customer experience", "Scalability validation", "Other (specify)"], default=["Improve accuracy / quality", "Cost reduction"])
+
+st.subheader("👥 2.3 Stakeholders Information")
+st.markdown('<div class="stakeholder-header">Partner Executive Sponsor</div>', unsafe_allow_html=True)
+st.session_state.stakeholders["Partner"] = st.data_editor(st.session_state.stakeholders["Partner"], num_rows="dynamic", use_container_width=True, key="ed_p")
+st.markdown('<div class="stakeholder-header">Customer Executive Sponsor</div>', unsafe_allow_html=True)
+st.session_state.stakeholders["Customer"] = st.data_editor(st.session_state.stakeholders["Customer"], num_rows="dynamic", use_container_width=True, key="ed_c")
+st.markdown('<div class="stakeholder-header">AWS Executive Sponsor</div>', unsafe_allow_html=True)
+st.session_state.stakeholders["AWS"] = st.data_editor(st.session_state.stakeholders["AWS"], num_rows="dynamic", use_container_width=True, key="ed_a")
+st.markdown('<div class="stakeholder-header">Project Escalation Contacts</div>', unsafe_allow_html=True)
+st.session_state.stakeholders["Escalation"] = st.data_editor(st.session_state.stakeholders["Escalation"], num_rows="dynamic", use_container_width=True, key="ed_e")
 st.divider()
 
-st.subheader("👥 2.2 Project Sponsor(s) / Stakeholder(s) / Project Team")
-col_team1, col_team2 = st.columns(2)
-with col_team1:
-    st.markdown('<div class="stakeholder-header">Partner Executive Sponsor</div>', unsafe_allow_html=True)
-    st.session_state.stakeholders["Partner"] = st.data_editor(st.session_state.stakeholders["Partner"], num_rows="dynamic", use_container_width=True, key="ed_partner")
-    st.markdown('<div class="stakeholder-header">AWS Executive Sponsor</div>', unsafe_allow_html=True)
-    st.session_state.stakeholders["AWS"] = st.data_editor(st.session_state.stakeholders["AWS"], num_rows="dynamic", use_container_width=True, key="ed_aws")
-with col_team2:
-    st.markdown('<div class="stakeholder-header">Customer Executive Sponsor</div>', unsafe_allow_html=True)
-    st.session_state.stakeholders["Customer"] = st.data_editor(st.session_state.stakeholders["Customer"], num_rows="dynamic", use_container_width=True, key="ed_customer")
-    st.markdown('<div class="stakeholder-header">Project Escalation Contacts</div>', unsafe_allow_html=True)
-    st.session_state.stakeholders["Escalation"] = st.data_editor(st.session_state.stakeholders["Escalation"], num_rows="dynamic", use_container_width=True, key="ed_escalation")
-
-st.divider()
-st.header("📋 3. Assumptions & Dependencies (Semi-Structured)")
+# --- 3. ASSUMPTIONS & DEPENDENCIES ---
+st.header("📋 3. Assumptions & Dependencies")
 st.subheader("🔗 3.1 Customer Dependencies")
-dep_options = ["Sample data availability", "Historical data availability", "Design / business guidelines finalized", "API access provided", "User access to AWS account", "SME availability for validation", "Network / VPC access", "Security approvals"]
-selected_deps = []
-cols_dep = st.columns(2)
-for idx, opt in enumerate(dep_options):
-    if cols_dep[idx % 2].checkbox(opt, key=f"dep_{idx}"): selected_deps.append(opt)
+dep_opts = ["Sample data availability", "Historical data availability", "Design / business guidelines finalized", "API access provided", "User access to AWS account", "SME availability for validation", "Network / VPC access", "Security approvals"]
+sel_deps = [opt for opt in dep_opts if st.checkbox(opt, key=f"dep_{opt}")]
 
 st.subheader("📊 3.2 Data Characteristics")
-data_types = st.multiselect("What type of data is involved?", ["Images", "Text", "PDFs / Documents", "Audio", "Video", "Structured tables", "APIs / Streams"])
-data_details = {}
-if data_types:
-    for dtype in data_types:
-        with st.expander(f"⚙️ Details for {dtype}", expanded=True):
-            col1, col2, col3 = st.columns(3)
-            if dtype == "Images":
-                sz = col1.text_input("Avg size (MB)", "2 MB", key="img_sz")
-                fmt = col2.text_input("Formats (JPEG/PNG/etc.)", "JPEG, PNG", key="img_fmt")
-                vol = col3.text_input("Approx volume (per day / total)", "1000 total", key="img_vol")
-                data_details[dtype] = {"Avg Size": sz, "Formats": fmt, "Volume": vol}
-            elif dtype == "PDFs / Documents":
-                sz = col1.text_input("Avg size (MB)", "5 MB", key="pdf_sz")
-                fmt = col2.text_input("Formats", "PDF, DOCX", key="pdf_fmt")
-                vol = col3.text_input("Approx volume (per day / total)", "500 total", key="pdf_vol")
-                data_details[dtype] = {"Avg Size": sz, "Formats": fmt, "Volume": vol}
-            elif dtype == "Text":
-                sz = col1.text_input("Avg size (KB/MB)", "100 KB", key="txt_sz")
-                fmt = col2.text_input("Formats", "TXT, JSON, CSV", key="txt_fmt")
-                vol = col3.text_input("Approx volume (per day / total)", "10,00,0 records", key="txt_vol")
-                data_details[dtype] = {"Avg Size": sz, "Formats": fmt, "Volume": vol}
-            else:
-                sz = col1.text_input("Avg size", "TBD", key=f"gen_sz_{dtype}")
-                fmt = col2.text_input("Formats / Specs", "TBD", key=f"gen_fmt_{dtype}")
-                vol = col3.text_input("Approx volume", "TBD", key=f"gen_vol_{dtype}")
-                data_details[dtype] = {"Avg Size": sz, "Formats": fmt, "Volume": vol}
+data_types = st.multiselect("Involved Data:", ["Images", "Text", "PDFs / Documents", "Audio", "Video", "Structured tables", "APIs / Streams"])
+data_meta = {}
+for dt in data_types:
+    with st.expander(f"⚙️ {dt} Details", expanded=True):
+        c1, c2, c3 = st.columns(3)
+        data_meta[dt] = {"Size": c1.text_input(f"{dt} Avg Size", "2 MB"), "Format": c2.text_input(f"{dt} Formats", "JPEG, PNG"), "Vol": c3.text_input(f"{dt} Volume", "100 total")}
 
 st.subheader("💡 3.3 Key Assumptions")
-assump_options = ["PoC only, not production-grade", "Limited data volume", "Rule-based logic acceptable initially", "Manual review for edge cases", "No real-time SLA commitments"]
-selected_assumps = []
-cols_as = st.columns(2)
-for idx, opt in enumerate(assump_options):
-    if cols_as[idx % 2].checkbox(opt, key=f"as_{idx}"): selected_assumps.append(opt)
-other_assump = st.text_input("Other (Free text)", placeholder="Enter any other project assumptions...")
-if other_assump: selected_assumps.append(other_assump)
-
+ass_opts = ["PoC only, not production-grade", "Limited data volume", "Rule-based logic acceptable initially", "Manual review for edge cases", "No real-time SLA commitments"]
+sel_ass = [opt for opt in ass_opts if st.checkbox(opt, key=f"ass_{opt}")]
+custom_ass = st.text_input("Other Assumptions:", placeholder="Enter custom assumptions...")
 st.divider()
+
+# --- 4. POC SUCCESS CRITERIA ---
 st.header("🎯 4. PoC Success Criteria")
 st.subheader("📊 4.1 Success Dimensions")
-success_dim_options = ["Accuracy", "Latency", "Usability", "Explainability", "Coverage", "Cost efficiency", "Integration readiness"]
-selected_dims = st.multiselect("Dimensions:", success_dim_options, default=["Accuracy", "Cost efficiency"])
+sel_dims = st.multiselect("Dimensions:", ["Accuracy", "Latency", "Usability", "Explainability", "Coverage", "Cost efficiency", "Integration readiness"], default=["Accuracy", "Latency"])
 st.subheader("✅ 4.2 User Validation Requirement")
-val_req = st.radio("Customer validation requirement:", ["Yes – customer validation required", "No – internal validation sufficient"])
-
+val_req = st.radio("Requirement:", ["Yes – customer validation required", "No – internal validation sufficient"])
 st.divider()
+
+# --- 5. SCOPE OF WORK – FUNCTIONAL CAPABILITIES ---
 st.header("🛠️ 5. Scope of Work – Functional Capabilities")
 st.subheader("⚙️ 5.1 Core Capabilities")
-cap_options = ["Upload / Ingestion", "Processing / Inference", "Metadata extraction", "Scoring / Recommendation", "Feedback loop", "UI display"]
-selected_caps = []
-cols_cap = st.columns(2)
-for idx, opt in enumerate(cap_options):
-    if cols_cap[idx % 2].checkbox(opt, value=True, key=f"cap_{idx}"): selected_caps.append(opt)
-custom_step = st.text_input("Add custom step (Optional):", placeholder="e.g., Automated reporting module...")
-if custom_step: selected_caps.append(custom_step)
+cap_list = ["Upload / Ingestion", "Processing / Inference", "Metadata extraction", "Scoring / Recommendation", "Feedback loop", "UI display"]
+sel_caps = [c for c in cap_list if st.checkbox(c, value=True, key=f"cap_{c}")]
+custom_cap = st.text_input("Add custom step:", placeholder="e.g., Automated reporting module...")
 st.subheader("🔗 5.2 Integrations Required")
-selected_ints = st.multiselect("Select systems to integrate:", ["Internal databases", "External APIs", "CRM", "ERP", "Search engine", "Data warehouse", "None"], default=["None"])
-
+sel_ints = st.multiselect("Integrations:", ["Internal databases", "External APIs", "CRM", "ERP", "Search engine", "Data warehouse", "None"], default=["None"])
 st.divider()
+
+# --- 6. ARCHITECTURE & AWS SERVICES ---
 st.header("🏢 6. Architecture & AWS Services")
 st.subheader("🖥️ 6.1 Compute & Orchestration")
-compute_option = st.multiselect("Select compute & orchestration services:", ["AWS Lambda", "Step Functions", "Amazon ECS / EKS", "Hybrid"], default=["AWS Lambda", "Step Functions"])
+compute = st.selectbox("Primary Compute:", ["AWS Lambda + Step Functions", "Amazon ECS / EKS", "Hybrid"], index=0)
 st.subheader("🤖 6.2 GenAI / ML Services")
-ml_services = st.multiselect("Select AI services:", ["Amazon Bedrock", "Amazon SageMaker", "Amazon Rekognition", "Amazon Textract", "Amazon Comprehend", "Amazon Transcribe", "Amazon Translate"], default=["Amazon Bedrock"])
+sel_ml = st.multiselect("AI/ML:", ["Amazon Bedrock", "Amazon SageMaker", "Rekognition", "Textract", "Comprehend", "Transcribe", "Translate"], default=["Amazon Bedrock"])
 st.subheader("💾 6.3 Storage & Search")
-storage_services = st.multiselect("Select Storage & Search:", ["Amazon S3", "Amazon DynamoDB", "Amazon OpenSearch", "Amazon RDS", "Vector DB (OpenSearch)", "Vector DB (Aurora PG)"], default=["Amazon S3"])
-
+sel_st = st.multiselect("Storage:", ["Amazon S3", "DynamoDB", "OpenSearch", "RDS", "Vector DB (OpenSearch / Aurora PG)"], default=["Amazon S3"])
+st.subheader("🌐 6.4 UI Layer")
+ui_layer = st.selectbox("UI Choice:", ["Streamlit on S3", "CloudFront + Static UI", "Internal demo only", "No UI (API only)"], index=0)
 st.divider()
+
+# --- 7. NON-FUNCTIONAL REQUIREMENTS ---
 st.header("⚙️ 7. Non-Functional Requirements")
 st.subheader("⚡ 7.1 Performance Expectations")
-perf_expectation = st.selectbox("Select expected performance profile:", ["Batch", "Near real-time", "Real-time"], index=1)
+perf = st.selectbox("Expected Profile:", ["Batch", "Near real-time", "Real-time"], index=1)
 st.subheader("🛡️ 7.2 Security & Compliance")
-sec_compliance = st.multiselect("Select security controls:", ["IAM-based access", "Encryption at rest", "Encryption in transit", "VPC deployment", "Audit logging", "Compliance alignment (RBI, SOC2, etc.)"], default=["IAM-based access", "Encryption at rest", "VPC deployment"])
-
+sel_sec = st.multiselect("Security Controls:", ["IAM-based access", "Encryption at rest", "Encryption in transit", "VPC deployment", "Audit logging", "Compliance alignment (RBI, SOC2, etc.)"], default=["IAM-based access", "Encryption at rest"])
 st.divider()
+
+# --- 8. TIMELINE & PHASING ---
 st.header("📅 8. Timeline & Phasing")
-col8_1, col8_2 = st.columns([1, 2])
-with col8_1:
-    st.subheader("⌛ 8.1 PoC Duration")
-    poc_duration = st.selectbox("Select PoC duration:", ["2 weeks", "4 weeks", "6 weeks", "Custom"], index=1)
-    final_duration = st.text_input("Specify Custom Duration:", "8 weeks") if poc_duration == "Custom" else poc_duration
-with col8_2:
-    st.subheader("📈 8.2 Phase Breakdown")
-    st.session_state.timeline_phases = st.data_editor(st.session_state.timeline_phases, num_rows="dynamic", use_container_width=True, key="ed_timeline")
-
+st.subheader("⌛ 8.1 PoC Duration")
+poc_dur = st.selectbox("Total Duration:", ["2 weeks", "4 weeks", "6 weeks", "Custom"])
+st.subheader("📈 8.2 Phase Breakdown")
+st.session_state.timeline_phases = st.data_editor(st.session_state.timeline_phases, num_rows="dynamic", use_container_width=True)
 st.divider()
-# --- 9. Cost Ownership (New Dropdown) ---
-st.header("💰 9. Cost Estimation & Ownership")
-cost_ownership = st.selectbox("9.2 Cost Ownership (Closed-ended):", ["Funded by AWS", "Funded by Partner", "Funded by Customer", "Shared"], index=2)
+
+# --- 9. COSTING INPUTS ---
+st.header("💰 9. Costing Inputs & Ownership")
+st.subheader("📊 9.1 AWS Calculator Link")
+st.info(f"Calculator Estimate for {sow_key}: {CALCULATOR_LINKS.get(sow_key, 'https://calculator.aws')}")
+st.subheader("🤝 9.2 Cost Ownership")
+ownership = st.selectbox("Funded By:", ["Funded by AWS", "Funded by Partner", "Funded by Customer", "Shared"], index=2)
+st.divider()
+
+# --- 10. FINAL OUTPUTS ---
+st.header("🏁 10. Final Outputs")
+st.subheader("🎁 10.1 Deliverables")
+sel_delivs = st.multiselect("Deliverables:", ["PoC architecture", "Working demo", "SOW document", "Cost estimate", "Next-phase proposal"], default=["Working demo", "SOW document"])
+st.subheader("🚀 10.2 Post-PoC Next Steps")
+sel_next = st.multiselect("Next Steps:", ["Production proposal", "Scaling roadmap", "Security review", "Performance optimization", "Model fine-tuning"], default=["Production proposal", "Scaling roadmap"])
 
 # --- GENERATION ---
-if st.button("✨ Generate SOW Document", type="primary", use_container_width=True):
-    if not api_key: st.warning("⚠️ Enter Gemini API Key.")
-    elif not objective: st.error("⚠️ Business Objective required.")
+if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
+    if not api_key: st.error("API Key required.")
     else:
-        with st.spinner(f"Architecting {selected_sow_name}..."):
+        with st.spinner("Architecting document..."):
             def get_md(df): return df.to_markdown(index=False)
-            cost_info = SOW_COST_TABLE_MAP.get(selected_sow_name, {})
-            dynamic_table_prompt = "| System | Infra Cost / month | AWS Calculator Cost |\n| --- | --- | --- |\n"
-            for k, v in cost_info.items():
-                label = "POC" if k=="poc_cost" else "Production" if k=="prod_cost" else "Bedrock" if k=="amazon_bedrock" else "Total"
-                dynamic_table_prompt += f"| {label} | {v} | Estimate |\n"
-            dep_context = "\n".join([f"- {d}" for d in selected_deps])
-            as_context = "\n".join([f"- {a}" for a in selected_assumps])
-            data_context = "".join([f"- **{dt}**: {', '.join([f'{k}: {v}' for k, v in val.items()])}\n" for dt, val in data_details.items()])
+            cost_info = SOW_COST_TABLE_MAP.get(sow_key, {})
+            cost_table = "| System | Infra Cost / month | AWS Calculator Cost |\n| --- | --- | --- |\n"
+            for k,v in cost_info.items(): cost_table += f"| {k} | {v} | Estimate |\n"
             
-            prompt_text = f"""
-            You are a professional AWS Solutions Architect. Generate a high-quality formal enterprise SOW for {selected_sow_name} in the {final_industry} industry. 
+            prompt = f"""
+            You are an AWS Solutions Architect. Generate a formal SOW for {sow_key} in {final_industry}.
             
-            STRICT FORMATTING RULES:
-            - Start immediately with '1 TABLE OF CONTENTS'.
-            - Use standard numerical numbering (1, 2, 3...) for sections.
-            - Do not use markdown bolding (**).
-            - Every heading MUST be immediately followed by its detailed content.
-            - Never repeat a main heading.
-            
-            STRICT SECTION FLOW (1-11):
+            STRICT SECTION FLOW (Follow exactly 1 to 10):
             1 TABLE OF CONTENTS
             2 PROJECT OVERVIEW
-              - Objective: {objective}
-              - Role Tables:
+              2.1 Business Objective: {biz_objective}
+              2.2 Key Outcomes: {', '.join(sel_outcomes)}
+              2.3 Project Team Roles:
               ### Partner Executive Sponsor
               {get_md(st.session_state.stakeholders["Partner"])}
               ### Customer Executive Sponsor
@@ -551,45 +382,62 @@ if st.button("✨ Generate SOW Document", type="primary", use_container_width=Tr
               ### Project Escalation Contacts
               {get_md(st.session_state.stakeholders["Escalation"])}
             3 ASSUMPTIONS & DEPENDENCIES
-              3.1 Customer Dependencies: {dep_context}
-              3.2 Data Characteristics: {data_context}
-              3.3 Key Assumptions: {as_context}
-            4 POC SUCCESS CRITERIA (Dimensions: {', '.join(selected_dims)}. Validation: {val_req}.)
-            5 SCOPE OF WORK – FUNCTIONAL CAPABILITIES (Core Flows: {', '.join(selected_caps)}. Integrations: {', '.join(selected_ints)}.)
-            6 SOLUTION ARCHITECTURE (Include ONLY: "Specifics to be discussed basis POC".)
-            7 ARCHITECTURE & AWS SERVICES (Describe Compute: {', '.join(compute_option)}, AI: {', '.join(ml_services)}, and Storage: {', '.join(storage_services)}.)
-            8 NON-FUNCTIONAL REQUIREMENTS (Performance: {perf_expectation}. Security: {', '.join(sec_compliance)}.)
-            9 COST ESTIMATION
-              9.1 Price Calculator (Provide strictly this table only: {dynamic_table_prompt})
-              9.2 Cost Ownership: {cost_ownership}
-            10 TIMELINE & PHASING (Duration: {final_duration}. Phases: {get_md(st.session_state.timeline_phases)}.)
-            11 RESOURCES & COST ESTIMATES
+              3.1 Customer Dependencies: {', '.join(sel_deps)}
+              3.2 Data Characteristics: {data_meta}
+              3.3 Key Assumptions: {', '.join(sel_ass)} {custom_ass}
+            4 POC SUCCESS CRITERIA
+              Success Dimensions: {', '.join(sel_dims)}
+              User Validation: {val_req}
+            5 SCOPE OF WORK – FUNCTIONAL CAPABILITIES
+              Core Capabilities: {', '.join(sel_caps)} {custom_cap}
+              Integrations: {', '.join(sel_ints)}
+            6 SOLUTION ARCHITECTURE
+              Placeholder for Diagram: "Specifics to be discussed basis POC"
+            7 ARCHITECTURE & AWS SERVICES
+              Compute: {compute}
+              AI/ML Services: {', '.join(sel_ml)}
+              Storage: {', '.join(sel_st)}
+              UI Layer: {ui_layer}
+            8 NON-FUNCTIONAL REQUIREMENTS
+              Performance Profile: {perf}
+              Security Controls: {', '.join(sel_sec)}
+            9 TIMELINE & PHASING
+              Overall Duration: {poc_dur}
+              Phases:
+              {get_md(st.session_state.timeline_phases)}
+            10 FINAL OUTPUTS
+              Deliverables: {', '.join(sel_delivs)}
+              Next Steps: {', '.join(sel_next)}
+
+            RULES:
+            - Start with '1 TABLE OF CONTENTS'. No introductory fluff.
+            - Format: Heading followed by content.
+            - Engagement type {engagement_type} drives the depth of statements.
+            - Tonality: Professional, technical, enterprise-ready.
             """
-            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt_text}]}], "systemInstruction": {"parts": [{"text": "Follow numbering 1 to 11 exactly. No repeating headers. Every header must be followed by content."}]}})
+            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering 1 to 10 exactly."}]}})
             if res:
                 st.session_state.generated_sow = res.json()['candidates'][0]['content']['parts'][0]['text']
-                st.balloons(); st.rerun()
+                st.rerun()
             else: st.error(err)
 
-# --- STEP 3: REVIEW & EXPORT ---
+# --- REVIEW & EXPORT ---
 if st.session_state.generated_sow:
-    st.divider(); st.header("3. Review & Export")
-    tab_edit, tab_preview = st.tabs(["✍️ Document Editor", "📄 Visual Preview"])
-    with tab_edit: 
-        st.session_state.generated_sow = st.text_area("Modify:", value=st.session_state.generated_sow, height=600, key="sow_editor")
+    st.divider(); tab_edit, tab_preview = st.tabs(["✍️ Edit Content", "📄 Visual Preview"])
+    with tab_edit: st.session_state.generated_sow = st.text_area("Final SOW Editor:", st.session_state.generated_sow, height=600)
     with tab_preview:
         st.markdown('<div class="sow-preview">', unsafe_allow_html=True)
-        calc_url_p = CALCULATOR_LINKS.get(selected_sow_name, "https://calculator.aws")
-        preview_content = st.session_state.generated_sow.replace("Estimate", f'<a href="{calc_url_p}" target="_blank" style="color:#3b82f6; text-decoration: underline;">Estimate</a>')
-        match = re.search(r'(?i)(^#*\s*6\s+SOLUTION ARCHITECTURE.*)', preview_content, re.MULTILINE)
+        # Diagram Injection
+        match = re.search(r'(?i)(^6\s+SOLUTION ARCHITECTURE.*)', st.session_state.generated_sow, re.MULTILINE)
         if match:
-            start, end = match.span(); st.markdown(preview_content[:end], unsafe_allow_html=True)
-            diag_out = SOW_DIAGRAM_MAP.get(selected_sow_name)
-            if diag_out and os.path.exists(diag_out): st.image(diag_out, caption=f"{selected_sow_name} Architecture", use_container_width=True)
-            st.markdown(preview_content[end:], unsafe_allow_html=True)
-        else: st.markdown(preview_content, unsafe_allow_html=True)
+            st.markdown(st.session_state.generated_sow[:match.end()], unsafe_allow_html=True)
+            diag_out = SOW_DIAGRAM_MAP.get(sow_key)
+            if diag_out and os.path.exists(diag_out): st.image(diag_out, caption="Solution Architecture")
+            st.markdown(st.session_state.generated_sow[match.end():], unsafe_allow_html=True)
+        else: st.markdown(st.session_state.generated_sow, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
-    if st.button("💾 Prepare Microsoft Word Document"):
-        info = {"sow_name": selected_sow_name, "customer_logo_bytes": customer_logo.getvalue() if customer_logo else None, "doc_date_str": doc_date.strftime("%d %B %Y")}
-        docx_data = create_docx_logic(st.session_state.generated_sow, info, selected_sow_name)
-        st.download_button("📥 Download Now (.docx)", docx_data, f"SOW_{selected_sow_name.replace(' ', '_')}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+    
+    if st.button("💾 Prepare Microsoft Word"):
+        branding = {"sow_name": sow_key, "customer_logo_bytes": customer_logo.getvalue() if customer_logo else None, "doc_date_str": doc_date.strftime("%d %B %Y")}
+        docx_data = create_docx_logic(st.session_state.generated_sow, branding, sow_key)
+        st.download_button("📥 Download SOW (.docx)", docx_data, f"SOW_{sow_key.replace(' ', '_')}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
