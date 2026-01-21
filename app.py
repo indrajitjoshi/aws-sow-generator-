@@ -138,7 +138,7 @@ def create_docx_logic(text_content, branding, sow_name):
     run_dt = dt.add_run(branding["doc_date_str"]); run_dt.bold = True; run_dt.font.name = 'Times New Roman'
     doc.add_page_break()
 
-    # Section Headers Mapping (Must be CAPITALIZED)
+    # Section Headers Mapping
     headers_map = {
         "1": "TABLE OF CONTENTS", "2": "PROJECT OVERVIEW", "3": "ASSUMPTIONS & DEPENDENCIES",
         "4": "POC SUCCESS CRITERIA", "5": "SCOPE OF WORK – FUNCTIONAL CAPABILITIES",
@@ -168,7 +168,7 @@ def create_docx_logic(text_content, branding, sow_name):
                 current_id = h_id; break
         
         if current_id:
-            # Force page break after TOC
+            # Force page break after TOC (Section 1) before Project Overview (Section 2)
             if in_toc and current_id == "2": 
                 doc.add_page_break()
                 in_toc = False
@@ -190,7 +190,9 @@ def create_docx_logic(text_content, branding, sow_name):
                         doc.add_picture(diag, width=Inches(6.0))
                         p_cap = doc.add_paragraph(f"{sow_name} – Architecture Diagram")
                         p_cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                        for rd in p_cap.runs: rd.font.name = 'Times New Roman'
+                        for run in p_cap.runs: 
+                            run.font.name = 'Times New Roman'
+                            run.font.color.rgb = RGBColor(0, 0, 0)
             i += 1; continue
             
         if line.startswith('|') and i + 1 < len(lines) and lines[i+1].strip().startswith('|'):
@@ -210,7 +212,6 @@ def create_docx_logic(text_content, branding, sow_name):
                     for idx, c_text in enumerate(cells_data): 
                         if idx < len(r): 
                             p_r = r[idx].paragraphs[0]
-                            # Active hyperlink for "Estimate"
                             if "Estimate" in c_text:
                                 calc_url = CALCULATOR_LINKS.get(sow_name, "https://calculator.aws/")
                                 parts = c_text.split("Estimate")
@@ -225,7 +226,9 @@ def create_docx_logic(text_content, branding, sow_name):
 
         if line.startswith('## ') or line.startswith('### '): 
             h = doc.add_heading(clean, level=2 if line.startswith('## ') else 3)
-            for r_h in h.runs: r_h.font.name, r_h.font.color.rgb = 'Times New Roman', RGBColor(0, 0, 0)
+            for run in h.runs: 
+                run.font.name = 'Times New Roman'
+                run.font.color.rgb = RGBColor(0, 0, 0)
         elif is_bullet:
             p_b = doc.add_paragraph(style="List Bullet")
             # Corrected truncation logic: use regex to remove markdown prefix instead of fixed slice
@@ -340,7 +343,7 @@ data_meta = {}
 for dt in data_types:
     with st.expander(f"⚙️ {dt} Details", expanded=True):
         c1, c2, c3 = st.columns(3)
-        data_meta[dt] = {"Size": c1.text_input(f"{dt} Avg Size", "2 MB"), "Format": c2.text_input(f"{dt} Formats", "JPEG, PNG" if dt=="Images" else "PDF"), "Vol": c3.text_input(f"{dt} Volume", "100/day")}
+        data_meta[dt] = {"Size": c1.text_input(f"{dt} Avg Size (MB)", "2 MB"), "Format": c2.text_input(f"{dt} Formats", "JPEG, PNG" if dt=="Images" else "PDF"), "Vol": c3.text_input(f"{dt} Volume", "100/day")}
 
 st.subheader("💡 3.3 Key Assumptions")
 sel_ass = [opt for opt in ["PoC only, not production-grade", "Limited data volume", "Rule-based logic acceptable initially", "Manual review for edge cases", "No real-time SLA commitments"] if st.checkbox(opt, key=f"ass_{opt}")]
@@ -393,7 +396,7 @@ st.divider()
 # --- 9. COSTING ---
 st.header("💰 9. Costing Inputs & Ownership")
 st.subheader("📊 9.1 Price Calculator")
-st.info(f"Calculator Link: {CALCULATOR_LINKS.get(sow_key, 'https://calculator.aws')}")
+st.info(f"Link: {CALCULATOR_LINKS.get(sow_key, 'https://calculator.aws')}")
 st.subheader("🤝 9.2 Cost Ownership")
 ownership = st.selectbox("Ownership:", ["Funded by AWS", "Funded by Partner", "Funded by Customer", "Shared"], index=2)
 st.divider()
@@ -423,7 +426,7 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
             STRICT SECTION FLOW (Follow exactly 1 to 10):
             1 TABLE OF CONTENTS
             2 PROJECT OVERVIEW
-              - Objective: {biz_objective}
+              - Objective: {biz_objective} (Rewrite into professional architect language)
               - Team Roles:
               ### Partner Executive Sponsor
               {get_md(st.session_state.stakeholders["Partner"])}
@@ -440,12 +443,13 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
               3.3 Key Assumptions: {', '.join(sel_ass)} {custom_ass}
             4 POC SUCCESS CRITERIA
               Dimensions: {', '.join(sel_dims)}. Validation: {val_req}
+              - Provide specific measurable KPIs (e.g., ≥85% accuracy).
             5 SCOPE OF WORK – FUNCTIONAL CAPABILITIES
               Flows: {', '.join(sel_caps)} {custom_cap}. Integrations: {', '.join(sel_ints)}
             6 SOLUTION ARCHITECTURE
               Include ONLY: "Specifics to be discussed basis POC"
             7 ARCHITECTURE & AWS SERVICES
-              Services: {', '.join(compute_choices)}, {', '.join(ai_svcs)}, {', '.join(st_svcs)}, {ui_layer}
+              Detailed description of: {', '.join(compute_choices)}, {', '.join(ai_svcs)}, {', '.join(st_svcs)}, {ui_layer}
             8 NON-FUNCTIONAL REQUIREMENTS
               Performance: {perf}. Security: {', '.join(sec)}
             9 TIMELINE & PHASING
@@ -457,7 +461,7 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
 
             STRICT FORMATTING RULES:
             - Start immediately with '1 TABLE OF CONTENTS'. DO NOT include intro fluff or hashtags before Section 1.
-            - ALL SECTION TITLES MUST BE IN CAPITAL LETTERS.
+            - ALL SECTION TITLES (1-10) MUST BE CAPITALIZED.
             - Format: Heading immediately followed by its content (Heading -> Content flow).
             - Tonality: Professional, technical, enterprise-ready.
             - Language: Black text only. Times New Roman style font compatible.
