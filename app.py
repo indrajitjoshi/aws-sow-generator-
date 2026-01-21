@@ -16,7 +16,7 @@ AWS_PN_LOGO = os.path.join(ASSETS_DIR, "aws partner logo.jpg")
 ONETURE_LOGO = os.path.join(ASSETS_DIR, "oneture logo1.jpg")
 AWS_ADV_LOGO = os.path.join(ASSETS_DIR, "aws advanced logo1.jpg")
 
-# Cost Data Map
+# Mapped Infra Costs
 SOW_COST_TABLE_MAP = { 
     "L1 Support Bot POC SOW": { "poc_cost": "3,536.40 USD" }, 
     "Beauty Advisor POC SOW": { 
@@ -93,7 +93,7 @@ def add_hyperlink(paragraph, text, url):
     new_run = OxmlElement('w:r')
     rPr = OxmlElement('w:rPr')
     c = OxmlElement('w:color')
-    c.set(qn('w:val'), '000000') # Fixed black color for Word hyperlinks
+    c.set(qn('w:val'), '000000') 
     u = OxmlElement('w:u')
     u.set(qn('w:val'), 'single')
     rPr.append(c); rPr.append(u); new_run.append(rPr)
@@ -109,11 +109,6 @@ def create_docx_logic(text_content, branding, sow_name):
     import io
     
     doc = Document()
-    
-    # Set default style to Times New Roman, Black
-    style = doc.styles['Normal']
-    style.font.name = 'Times New Roman'
-    style.font.size = Pt(11)
     
     # Page 1 Cover
     p = doc.add_paragraph()
@@ -138,12 +133,12 @@ def create_docx_logic(text_content, branding, sow_name):
     run_dt = dt.add_run(branding["doc_date_str"]); run_dt.bold = True; run_dt.font.name = 'Times New Roman'
     doc.add_page_break()
 
-    # Section Headers Mapping (Must match prompt)
+    # Section Headers Mapping
     headers_map = {
         "1": "TABLE OF CONTENTS", "2": "PROJECT OVERVIEW", "3": "ASSUMPTIONS & DEPENDENCIES",
         "4": "POC SUCCESS CRITERIA", "5": "SCOPE OF WORK – FUNCTIONAL CAPABILITIES",
         "6": "SOLUTION ARCHITECTURE", "7": "ARCHITECTURE & AWS SERVICES",
-        "8": "NON-FUNCTIONAL REQUIREMENTS", "9": "COSTING INPUTS", "10": "FINAL OUTPUTS"
+        "8": "NON-FUNCTIONAL REQUIREMENTS", "9": "TIMELINE & PHASING", "10": "FINAL OUTPUTS"
     }
 
     lines = text_content.split('\n')
@@ -154,7 +149,7 @@ def create_docx_logic(text_content, branding, sow_name):
         line = lines[i].strip()
         if not line: i += 1; continue
         
-        # Clean markdown artifacts
+        # Remove any stray markdown artifacts
         clean = re.sub(r'#+\s*', '', line).strip()
         clean = re.sub(r'\*+', '', clean).strip()
         upper = clean.upper()
@@ -165,14 +160,13 @@ def create_docx_logic(text_content, branding, sow_name):
                 current_id = h_id; break
         
         if current_id:
-            # Force page break after TOC
+            # Mandatory Page Break after TOC (Section 1) before Project Overview (Section 2)
             if in_toc and current_id == "2": 
                 doc.add_page_break()
                 in_toc = False
                 
             if not rendered_sections[current_id]:
-                # All titles CAPITALIZED
-                h = doc.add_heading(clean.upper(), level=1)
+                h = doc.add_heading(clean.upper(), level=1) # Forced capitalization
                 for run in h.runs: 
                     run.font.name = 'Times New Roman'
                     run.font.color.rgb = RGBColor(0, 0, 0)
@@ -180,16 +174,14 @@ def create_docx_logic(text_content, branding, sow_name):
                 rendered_sections[current_id] = True
                 if current_id == "1": in_toc = True
                 
-                # Diagram injection at Section 6
+                # Injection point for Diagram in Section 6
                 if current_id == "6":
                     diag = SOW_DIAGRAM_MAP.get(sow_name)
                     if diag and os.path.exists(diag):
                         doc.add_picture(diag, width=Inches(6.0))
-                        p_diag = doc.add_paragraph(f"{sow_name} – Architecture Diagram")
-                        p_diag.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                        for r_diag in p_diag.runs: 
-                            r_diag.font.name = 'Times New Roman'
-                            r_diag.font.color.rgb = RGBColor(0, 0, 0)
+                        p_cap = doc.add_paragraph(f"{sow_name} – Architecture Diagram")
+                        p_cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                        for rd in p_cap.runs: rd.font.name = 'Times New Roman'
             i += 1; continue
             
         if line.startswith('|') and i + 1 < len(lines) and lines[i+1].strip().startswith('|'):
@@ -203,7 +195,6 @@ def create_docx_logic(text_content, branding, sow_name):
                     cell = t.rows[0].cells[idx]
                     r_h = cell.paragraphs[0].add_run(h_text)
                     r_h.bold = True; r_h.font.name = 'Times New Roman'
-                    r_h.font.color.rgb = RGBColor(0, 0, 0)
                 for row_line in table_lines[2:]:
                     cells_data = [c.strip() for c in row_line.split('|') if c.strip()]
                     r = t.add_row().cells
@@ -274,18 +265,14 @@ if 'timeline_phases' not in st.session_state:
 
 def reset(): st.session_state.generated_sow = ""; st.rerun()
 
-# --- SIDEBAR: 1. PROJECT INTAKE ---
+# --- 1. PROJECT INTAKE ---
 with st.sidebar:
     st.image("https://img.icons8.com/fluency/96/artificial-intelligence.png", width=60)
     st.title("Architect Pro")
     with st.expander("🔑 API Key", expanded=False): api_key = st.text_input("Gemini API Key", type="password")
     st.divider()
     st.header("📋 1. Project Intake")
-    sow_opts = [
-        "1. L1 Support Bot POC SOW", "2. Beauty Advisor POC SOW", "3. Ready Search POC Scope of Work Document",
-        "4. AI based Image Enhancement POC SOW", "5. AI based Image Inspection POC SOW",
-        "6. Gen AI for SOP POC SOW", "7. Project Scope Document", "8. Gen AI Speech To Speech", "9. PoC Scope Document"
-    ]
+    sow_opts = ["1. L1 Support Bot POC SOW", "2. Beauty Advisor POC SOW", "3. Ready Search POC Scope of Work Document", "4. AI based Image Enhancement POC SOW", "5. AI based Image Inspection POC SOW", "6. Gen AI for SOP POC SOW", "7. Project Scope Document", "8. Gen AI Speech To Speech", "9. PoC Scope Document"]
     solution_type = st.selectbox("1.1 Solution Type", sow_opts)
     sow_key = solution_type.split(". ", 1)[1] if ". " in solution_type else solution_type
     
@@ -361,15 +348,13 @@ st.divider()
 # --- 6. ARCHITECTURE & AWS SERVICES ---
 st.header("🏢 6. Architecture & AWS Services")
 st.subheader("🖥️ 6.1 Compute & Orchestration")
-# Now separate options
-compute_choices = st.multiselect("Separate Options:", ["AWS Lambda", "Step Functions", "Amazon ECS / EKS(future)", "Hybrid"], default=["AWS Lambda", "Step Functions"])
-
+compute_choices = st.multiselect("Select Primary Compute:", ["AWS Lambda", "Step Functions", "Amazon ECS", "Amazon EKS(future)", "Hybrid"], default=["AWS Lambda", "Step Functions"])
 st.subheader("🤖 6.2 GenAI / ML Services")
 ai_svcs = st.multiselect("AI Services:", ["Amazon Bedrock", "Amazon SageMaker", "Rekognition", "Textract", "Comprehend", "Transcribe", "Translate"], default=["Amazon Bedrock"])
 st.subheader("💾 6.3 Storage & Search")
 st_svcs = st.multiselect("Storage:", ["Amazon S3", "DynamoDB", "OpenSearch", "RDS", "Vector DB (OpenSearch / Aurora PG)"], default=["Amazon S3"])
 st.subheader("🌐 6.4 UI Layer")
-ui_layer = st.selectbox("UI Choice:", ["Streamlit on S3", "CloudFront + Static UI", "Internal demo only", "No UI (API only)"], index=0)
+ui_layer = st.selectbox("UI:", ["Streamlit on S3", "CloudFront + Static UI", "Internal demo only", "No UI (API only)"], index=0)
 st.divider()
 
 # --- 7. NON-FUNCTIONAL REQUIREMENTS ---
@@ -389,7 +374,7 @@ st.divider()
 # --- 9. COSTING ---
 st.header("💰 9. Costing Inputs & Ownership")
 st.subheader("📊 9.1 Price Calculator")
-st.info(f"Link: {CALCULATOR_LINKS.get(sow_key, 'https://calculator.aws')}")
+st.info(f"Calculator Link: {CALCULATOR_LINKS.get(sow_key, 'https://calculator.aws')}")
 st.subheader("🤝 9.2 Cost Ownership")
 ownership = st.selectbox("Ownership:", ["Funded by AWS", "Funded by Partner", "Funded by Customer", "Shared"], index=2)
 st.divider()
@@ -409,23 +394,18 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
             def get_md(df): return df.to_markdown(index=False)
             cost_info = SOW_COST_TABLE_MAP.get(sow_key, {})
             cost_table = "| System | Infra Cost / month | AWS Calculator Cost |\n| --- | --- | --- |\n"
-            for k,v in cost_info.items(): cost_table += f"| {k} | {v} | Estimate |\n"
+            for k,v in cost_info.items(): 
+                label = "POC Cost" if k == "poc_cost" else "Prod Cost" if k == "prod_cost" else k
+                cost_table += f"| {label} | {v} | Estimate |\n"
             
             prompt = f"""
-            You are a professional AWS Solutions Architect. Generate a formal SOW for {sow_key} in the {final_industry} industry. 
+            You are a professional AWS Solutions Architect. Generate a formal enterprise SOW for {sow_key} in the {final_industry} industry. 
             
-            STRICT FORMATTING RULES:
-            - SECTION TITLES MUST BE IN CAPITAL LETTERS (e.g., '10 FINAL OUTPUTS').
-            - Start immediately with '1 TABLE OF CONTENTS'. DO NOT include any intro fluff, titles like 'Statement of Work', or hashtags like # before the TOC.
-            - Textual content must follow each heading immediately (Heading -> Content flow).
-            - Use only Black text.
-            - Format for Times New Roman font.
-            
-            STRICT SECTION FLOW (1 to 10):
+            STRICT SECTION FLOW (Follow exactly 1 to 10):
             1 TABLE OF CONTENTS
             2 PROJECT OVERVIEW
-              - Business Objective: {biz_objective}
-              - Team Roles:
+              - Objective: {biz_objective} (Refine into professional architect language)
+              - Outomes: {', '.join(sel_outcomes)}
               ### Partner Executive Sponsor
               {get_md(st.session_state.stakeholders["Partner"])}
               ### Customer Executive Sponsor
@@ -434,7 +414,6 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
               {get_md(st.session_state.stakeholders["AWS"])}
               ### Project Escalation Contacts
               {get_md(st.session_state.stakeholders["Escalation"])}
-              - Outcomes: {', '.join(sel_outcomes)}
             3 ASSUMPTIONS & DEPENDENCIES
               3.1 Customer Dependencies: {', '.join(sel_deps)}
               3.2 Data Characteristics: {data_meta}
@@ -449,14 +428,21 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
               Services: {', '.join(compute_choices)}, {', '.join(ai_svcs)}, {', '.join(st_svcs)}, {ui_layer}
             8 NON-FUNCTIONAL REQUIREMENTS
               Performance: {perf}. Security: {', '.join(sec)}
-            9 COSTING INPUTS
-              - {cost_table}
-              - Ownership: {ownership}
+            9 TIMELINE & PHASING
+              Duration: {poc_dur}. Phases: {get_md(st.session_state.timeline_phases)}
             10 FINAL OUTPUTS
               Deliverables: {', '.join(delivs)}
               Next Steps: {', '.join(nxt)}
+              Cost Ownership: {ownership}
+
+            STRICT FORMATTING RULES:
+            - Start immediately with '1 TABLE OF CONTENTS'. No intro text. No hashtags.
+            - ALL SECTION TITLES (1-10) MUST BE CAPITALIZED.
+            - Format: Heading immediately followed by content.
+            - Tonality: Professional, Technical, AWS Architect.
+            - Language: Black text only.
             """
-            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering 1 to 10 exactly. Start with '1 TABLE OF CONTENTS'. No intro text. Capitalize all titles. Heading->Content flow. Black text only."}]}})
+            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering 1 to 10 exactly. No repetition. Heading->Content flow. Black text only."}]}})
             if res:
                 st.session_state.generated_sow = res.json()['candidates'][0]['content']['parts'][0]['text']
                 st.rerun()
@@ -466,14 +452,13 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
 if st.session_state.generated_sow:
     st.divider(); tab_e, tab_p = st.tabs(["✍️ Editor", "📄 Visual Preview"])
     with tab_e: 
-        st.session_state.generated_sow = st.text_area("Modify SOW:", st.session_state.generated_sow, height=600)
+        st.session_state.generated_sow = st.text_area("Modify SOW Content:", st.session_state.generated_sow, height=600)
     with tab_p:
         st.markdown('<div class="sow-preview">', unsafe_allow_html=True)
-        # Visual Preview Rendering
         calc_url_p = CALCULATOR_LINKS.get(sow_key, "https://calculator.aws/")
         p_content = st.session_state.generated_sow.replace("Estimate", f'<a href="{calc_url_p}" target="_blank">Estimate</a>')
         
-        # Injects the Solution Architecture Diagram in Section 6
+        # Inject Solution Architecture Diagram in Section 6
         match = re.search(r'(?i)(^6\s+SOLUTION ARCHITECTURE.*)', p_content, re.MULTILINE)
         if match:
             st.markdown(p_content[:match.end()], unsafe_allow_html=True)
