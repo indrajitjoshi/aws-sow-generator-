@@ -38,6 +38,7 @@ CALCULATOR_LINKS = {
     "Ready Search POC Scope of Work Document": "https://calculator.aws/#/estimate?id=f8bc48f1ae566b8ea1241994328978e7e86d3490",
     "AI based Image Enhancement POC SOW": "https://calculator.aws/#/estimate?id=9a3e593b92b796acecf31a78aec17d7eb957d1e5",
     "Beauty Advisor POC SOW": "https://calculator.aws/#/estimate?id=3f89756a35f7bac7b2cd88d95f3e9aba9be9b0eb",
+    "Beauty Advisor Production": "https://calculator.aws/#/estimate?id=4d7f092e819c799f680fd14f8de3f181f565c48e",
     "AI based Image Inspection POC SOW": "https://calculator.aws/#/estimate?id=72c56f93b0c0e101d67a46af4f4fe9886eb93342",
     "Gen AI for SOP POC SOW": "https://calculator.aws/#/estimate?id=c21e9b242964724bf83556cfeee821473bb935d1",
     "Project Scope Document": "https://calculator.aws/#/estimate?id=37339d6e34c73596559fe09ca16a0ac2ec4c4252",
@@ -101,6 +102,7 @@ def add_hyperlink(paragraph, text, url):
     paragraph._p.append(hyperlink)
 
 def create_docx_logic(text_content, branding, sow_name):
+    import docx
     from docx import Document
     from docx.shared import Inches, Pt, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -141,8 +143,8 @@ def create_docx_logic(text_content, branding, sow_name):
     headers_map = {
         "1": "TABLE OF CONTENTS", "2": "PROJECT OVERVIEW", "3": "ASSUMPTIONS & DEPENDENCIES",
         "4": "POC SUCCESS CRITERIA", "5": "SCOPE OF WORK – FUNCTIONAL CAPABILITIES",
-        "6": "SOLUTION ARCHITECTURE", "7": "NON-FUNCTIONAL REQUIREMENTS",
-        "8": "TIMELINE & PHASING", "9": "COSTING INPUTS & OWNERSHIP", "10": "FINAL OUTPUTS"
+        "6": "SOLUTION ARCHITECTURE", "7": "ARCHITECTURE & AWS SERVICES",
+        "8": "NON-FUNCTIONAL REQUIREMENTS", "9": "TIMELINE & PHASING", "10": "FINAL OUTPUTS"
     }
 
     lines = text_content.split('\n')
@@ -152,6 +154,9 @@ def create_docx_logic(text_content, branding, sow_name):
     while i < len(lines):
         line = lines[i].strip()
         if not line: i += 1; continue
+        
+        # Determine if this is a bullet point
+        is_bullet = line.startswith('- ') or line.startswith('* ')
         
         # Clean markdown artifacts for identification
         clean_line = re.sub(r'#+\s*', '', line).strip()
@@ -207,13 +212,13 @@ def create_docx_logic(text_content, branding, sow_name):
                     cell = t.rows[0].cells[idx]
                     r_h = cell.paragraphs[0].add_run(h_text)
                     r_h.bold = True; r_h.font.name = 'Times New Roman'
+                    r_h.font.color.rgb = RGBColor(0, 0, 0)
                 for row_line in table_lines[2:]:
                     cells_data = [c.strip() for c in row_line.split('|') if c.strip()]
                     r = t.add_row().cells
                     for idx, c_text in enumerate(cells_data): 
                         if idx < len(r): 
                             p_r = r[idx].paragraphs[0]
-                            # Active hyperlink for "Estimate"
                             if "Estimate" in c_text:
                                 calc_url = CALCULATOR_LINKS.get(sow_name, "https://calculator.aws/")
                                 parts = c_text.split("Estimate")
@@ -231,9 +236,9 @@ def create_docx_logic(text_content, branding, sow_name):
             for run in h.runs: 
                 run.font.name = 'Times New Roman'
                 run.font.color.rgb = RGBColor(0, 0, 0)
-        elif line.startswith('- ') or line.startswith('* '):
+        elif is_bullet:
             p_b = doc.add_paragraph(style="List Bullet")
-            # Fixed the truncation logic that caused "spelling" errors
+            # Fixed the truncation logic that caused spelling errors
             bullet_clean = re.sub(r'^[\-\*]\s*', '', line).strip()
             bullet_clean = re.sub(r'\*+', '', bullet_clean).strip()
             r_b = p_b.add_run(bullet_clean); r_b.font.name, r_b.font.color.rgb = 'Times New Roman', RGBColor(0, 0, 0)
