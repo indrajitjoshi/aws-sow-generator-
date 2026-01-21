@@ -84,53 +84,36 @@ st.markdown("""
 
 # Helper functions
 def add_hyperlink(paragraph, text, url):
-    import docx.oxml.shared
+    from docx.oxml.shared import qn, OxmlElement
     import docx.opc.constants
     part = paragraph.part
     r_id = part.relate_to(url, docx.opc.constants.RELATIONSHIP_TYPE.HYPERLINK, is_external=True)
-    hyperlink = docx.oxml.shared.OxmlElement('w:hyperlink')
-    hyperlink.set(docx.oxml.shared.qn('r:id'), r_id, )
-    new_run = docx.oxml.shared.OxmlElement('w:r')
-    rPr = docx.oxml.shared.OxmlElement('w:rPr')
-    c = docx.oxml.shared.OxmlElement('w:color')
-    c.set(docx.oxml.shared.qn('w:val'), '000000') # Black color
-    u = docx.oxml.shared.OxmlElement('w:u')
-    u.set(docx.oxml.shared.qn('w:val'), 'single')
+    hyperlink = OxmlElement('w:hyperlink')
+    hyperlink.set(qn('r:id'), r_id, )
+    new_run = OxmlElement('w:r')
+    rPr = OxmlElement('w:rPr')
+    c = OxmlElement('w:color')
+    c.set(qn('w:val'), '000000') # Set to Black
+    u = OxmlElement('w:u')
+    u.set(qn('w:val'), 'single')
     rPr.append(c); rPr.append(u); new_run.append(rPr)
-    t = docx.oxml.shared.OxmlElement('w:t'); t.text = text
+    t = OxmlElement('w:t'); t.text = text
     new_run.append(t); hyperlink.append(new_run)
     paragraph._p.append(hyperlink)
 
-def add_infra_cost_table(doc, sow_name, data):
-    cost_data = SOW_COST_TABLE_MAP.get(sow_name)
-    if not cost_data: return
-    calc_url = CALCULATOR_LINKS.get(sow_name, "https://calculator.aws/#/")
-    table = doc.add_table(rows=1, cols=3); table.style = "Table Grid"
-    hdr = table.rows[0].cells
-    hdr[0].text = "System"; hdr[1].text = "Infra Cost / month"; hdr[2].text = "AWS Calculator Cost"
-    for label, cost_key in [("POC", "poc_cost"), ("Production", "prod_cost")]:
-        if cost_key in cost_data:
-            r = table.add_row().cells
-            r[0].text = label; r[1].text = cost_data[cost_key]
-            add_hyperlink(r[2].paragraphs[0], "Estimate", calc_url)
-
 def create_docx_logic(text_content, branding, sow_name):
+    import docx
     from docx import Document
-    from docx.shared import Inches, Pt
+    from docx.shared import Inches, Pt, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
-    from docx.oxml.shared import qn
+    from docx.oxml.shared import qn, OxmlElement
     doc = Document()
     
     # Global document style: Times New Roman, Black
     style = doc.styles['Normal']
     style.font.name = 'Times New Roman'
     style.font.size = Pt(11)
-    # Necessary for some versions of Word to respect font name
-    r = style.element.xpath('.//w:rPr')[0]
-    r.append(docx.oxml.shared.OxmlElement('w:rFonts'))
-    r.find(qn('w:rFonts')).set(qn('w:ascii'), 'Times New Roman')
-    r.find(qn('w:rFonts')).set(qn('w:hAnsi'), 'Times New Roman')
-
+    
     # Page 1 Cover
     p = doc.add_paragraph()
     if os.path.exists(AWS_PN_LOGO): doc.add_picture(AWS_PN_LOGO, width=Inches(1.6))
@@ -155,15 +138,21 @@ def create_docx_logic(text_content, branding, sow_name):
     doc.add_page_break()
 
     # Section Headers Mapping
-    headers = {
-        "1": "TABLE OF CONTENTS", "2": "PROJECT OVERVIEW", "3": "ASSUMPTIONS & DEPENDENCIES",
-        "4": "POC SUCCESS CRITERIA", "5": "SCOPE OF WORK – FUNCTIONAL CAPABILITIES",
-        "6": "SOLUTION ARCHITECTURE", "7": "ARCHITECTURE & AWS SERVICES",
-        "8": "NON-FUNCTIONAL REQUIREMENTS", "9": "COSTING INPUTS", "10": "FINAL OUTPUTS"
+    headers_map = {
+        "1": "TABLE OF CONTENTS", 
+        "2": "PROJECT OVERVIEW", 
+        "3": "ASSUMPTIONS & DEPENDENCIES",
+        "4": "POC SUCCESS CRITERIA", 
+        "5": "SCOPE OF WORK – FUNCTIONAL CAPABILITIES",
+        "6": "SOLUTION ARCHITECTURE", 
+        "7": "ARCHITECTURE & AWS SERVICES",
+        "8": "NON-FUNCTIONAL REQUIREMENTS", 
+        "9": "COSTING INPUTS", 
+        "10": "FINAL OUTPUTS"
     }
 
     lines = text_content.split('\n')
-    rendered = {str(i): False for i in range(1, 11)}
+    rendered_sections = {str(i): False for i in range(1, 11)}
     i, in_toc = 0, False
 
     while i < len(lines):
@@ -173,33 +162,36 @@ def create_docx_logic(text_content, branding, sow_name):
         upper = clean.upper()
 
         current_id = None
-        for h_id, h_title in headers.items():
-            # Match exactly capitalized titles as provided in headers map
+        for h_id, h_title in headers_map.items():
             if re.match(rf"^{h_id}[\.\s]+{re.escape(h_title)}", upper):
                 current_id = h_id; break
         
         if current_id:
-            # Force page break after TOC
+            # Force page break after TOC table/content and before Section 2
             if in_toc and current_id == "2": 
                 doc.add_page_break()
                 in_toc = False
                 
-            if not rendered[current_id]:
-                h = doc.add_heading(clean, level=1)
+            if not rendered_sections[current_id]:
+                # Title capitalization forced
+                h = doc.add_heading(clean.upper(), level=1)
                 for run in h.runs: 
                     run.font.name = 'Times New Roman'
-                    run.font.color.rgb = docx.shared.RGBColor(0, 0, 0)
+                    run.font.color.rgb = RGBColor(0, 0, 0)
                 
-                rendered[current_id] = True
+                rendered_sections[current_id] = True
                 if current_id == "1": in_toc = True
                 
+                # Solution Architecture Diagram injection in Section 6
                 if current_id == "6":
                     diag = SOW_DIAGRAM_MAP.get(sow_name)
                     if diag and os.path.exists(diag):
                         doc.add_picture(diag, width=Inches(6.0))
-                        p_diag = doc.add_paragraph(f"{sow_name} – Architecture Diagram")
-                        p_diag.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                        for run in p_diag.runs: run.font.name = 'Times New Roman'
+                        p_cap = doc.add_paragraph(f"{sow_name} – Architecture Diagram")
+                        p_cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                        for run in p_cap.runs:
+                            run.font.name = 'Times New Roman'
+                            run.font.color.rgb = RGBColor(0, 0, 0)
             i += 1; continue
             
         if line.startswith('|') and i + 1 < len(lines) and lines[i+1].strip().startswith('|'):
@@ -210,34 +202,40 @@ def create_docx_logic(text_content, branding, sow_name):
                 cols = [c.strip() for c in table_lines[0].split('|') if c.strip()]
                 t = doc.add_table(rows=1, cols=len(cols)); t.style = "Table Grid"
                 for idx, h_text in enumerate(cols):
-                    cell_h = t.rows[0].cells[idx]
-                    p_h = cell_h.paragraphs[0]
-                    r_h = p_h.add_run(h_text); r_h.bold = True; r_h.font.name = 'Times New Roman'
+                    cell = t.rows[0].cells[idx]
+                    p_cell = cell.paragraphs[0]
+                    r_cell = p_cell.add_run(h_text)
+                    r_cell.bold = True
+                    r_cell.font.name = 'Times New Roman'
                 for row_line in table_lines[2:]:
                     cells_data = [c.strip() for c in row_line.split('|') if c.strip()]
                     r = t.add_row().cells
                     for idx, c_text in enumerate(cells_data): 
                         if idx < len(r): 
                             p_r = r[idx].paragraphs[0]
-                            r_r = p_r.add_run(c_text); r_r.font.name = 'Times New Roman'
+                            r_r = p_r.add_run(c_text)
+                            r_r.font.name = 'Times New Roman'
+                            r_r.font.color.rgb = RGBColor(0, 0, 0)
             continue
 
         if line.startswith('## '): 
             h = doc.add_heading(clean, level=2)
             for run in h.runs: 
                 run.font.name = 'Times New Roman'
-                run.font.color.rgb = docx.shared.RGBColor(0, 0, 0)
+                run.font.color.rgb = RGBColor(0, 0, 0)
         elif line.startswith('### '): 
             h = doc.add_heading(clean, level=3)
             for run in h.runs: 
                 run.font.name = 'Times New Roman'
-                run.font.color.rgb = docx.shared.RGBColor(0, 0, 0)
+                run.font.color.rgb = RGBColor(0, 0, 0)
         elif line.startswith('- ') or line.startswith('* '):
             p_b = doc.add_paragraph(style="List Bullet")
             r_b = p_b.add_run(clean[2:]); r_b.font.name = 'Times New Roman'
+            r_b.font.color.rgb = RGBColor(0, 0, 0)
         else:
             p_n = doc.add_paragraph()
             run_n = p_n.add_run(clean); run_n.font.name = 'Times New Roman'
+            run_n.font.color.rgb = RGBColor(0, 0, 0)
             if any(k in upper for k in ["SPONSOR", "CONTACTS", "ASSUMPTIONS:", "DEPENDENCIES:"]):
                 run_n.bold = True
         i += 1
@@ -329,7 +327,7 @@ dep_opts = ["Sample data availability", "Historical data availability", "Design 
 sel_deps = [opt for opt in dep_opts if st.checkbox(opt, key=f"dep_{opt}")]
 
 st.subheader("📊 3.2 Data Characteristics")
-data_types = st.multiselect("What type of data is involved?", ["Images", "Text", "PDFs / Documents", "Audio", "Video", "Structured tables", "APIs / Streams"])
+data_types = st.multiselect("Data involved:", ["Images", "Text", "PDFs / Documents", "Audio", "Video", "Structured tables", "APIs / Streams"])
 data_meta = {}
 for dt in data_types:
     with st.expander(f"⚙️ {dt} Details", expanded=True):
@@ -422,7 +420,7 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
             - ALL SECTION TITLES MUST BE IN CAPITAL LETTERS (e.g., '10 FINAL OUTPUTS').
             - Start immediately with '1 TABLE OF CONTENTS'. No introductory text. No bolding (**).
             - Textual content must follow each heading immediately (Heading -> Content flow).
-            - Use only Black text in the response.
+            - Output should be compatible with being converted to Times New Roman, Black text.
             - Provide detailed textual descriptions for every section.
             
             STRICT SECTION FLOW (1 to 10):
@@ -461,7 +459,7 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
               Deliverables: {', '.join(delivs)}
               Next Steps: {', '.join(nxt)}
             """
-            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering 1 to 10. Capitalize all titles. Use Heading->Content flow. Entire document in Times New Roman style font."}]}})
+            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering 1 to 10. Capitalize all titles. Use Heading->Content flow. Ensure document flow is consistent and textual content is professional."}]}})
             if res:
                 st.session_state.generated_sow = res.json()['candidates'][0]['content']['parts'][0]['text']
                 st.rerun()
