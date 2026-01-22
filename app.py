@@ -137,7 +137,7 @@ def create_docx_logic(text_content, branding, sow_name):
     run_dt = dt.add_run(branding["doc_date_str"]); run_dt.bold = True; run_dt.font.name = 'Times New Roman'
     doc.add_page_break()
 
-    # Section Headers Mapping
+    # Section Headers Mapping (MUST BE CAPITALIZED TO MATCH AI OUTPUT)
     headers_map = {
         "1": "TABLE OF CONTENTS", "2": "PROJECT OVERVIEW", "3": "ASSUMPTIONS & DEPENDENCIES",
         "4": "POC SUCCESS CRITERIA", "5": "SCOPE OF WORK – FUNCTIONAL CAPABILITIES",
@@ -163,17 +163,19 @@ def create_docx_logic(text_content, branding, sow_name):
             if re.match(rf"^{h_id}[\.\s]+{re.escape(h_title)}", upper):
                 current_id = h_id; break
         
-        # skip intro commentary
+        # Logic to skip intro commentary before section 1
         if not content_started:
             if current_id == "1": content_started = True
             else: i += 1; continue
 
         if current_id:
+            # Force page break after TOC (Section 1) and before Section 2
             if in_toc and current_id == "2": 
                 doc.add_page_break()
                 in_toc = False
                 
             if not rendered_sections[current_id]:
+                # Force capital titles as requested
                 h = doc.add_heading(clean_line.upper(), level=1)
                 for run in h.runs: 
                     run.font.name = 'Times New Roman'
@@ -182,6 +184,7 @@ def create_docx_logic(text_content, branding, sow_name):
                 rendered_sections[current_id] = True
                 if current_id == "1": in_toc = True
                 
+                # Solution Architecture Diagram injection in Section 6
                 if current_id == "6":
                     diag = SOW_DIAGRAM_MAP.get(sow_name)
                     if diag and os.path.exists(diag):
@@ -210,6 +213,7 @@ def create_docx_logic(text_content, branding, sow_name):
                     for idx, c_text in enumerate(cells_data): 
                         if idx < len(r): 
                             p_r = r[idx].paragraphs[0]
+                            # Active hyperlink for "Estimate"
                             if "estimate" in c_text.lower():
                                 calc_url = CALCULATOR_LINKS.get(sow_name, "https://calculator.aws/")
                                 start_idx = c_text.lower().find("estimate")
@@ -231,6 +235,7 @@ def create_docx_logic(text_content, branding, sow_name):
                 run.font.color.rgb = RGBColor(0, 0, 0)
         elif line.startswith('- ') or line.startswith('* '):
             p_b = doc.add_paragraph(style="List Bullet")
+            # Strips bullets while keeping first letter intact
             bullet_clean = re.sub(r'^[\-\*]\s*', '', line).strip()
             bullet_clean = re.sub(r'\*+', '', bullet_clean).strip()
             r_b = p_b.add_run(bullet_clean); r_b.font.name, r_b.font.color.rgb = 'Times New Roman', RGBColor(0, 0, 0)
@@ -412,18 +417,20 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
                 cost_table += f"| {label} | {v} | Estimate |\n"
             
             prompt = f"""
-            You are a professional enterprise AWS Solutions Architect. Generate a formal enterprise SOW for {sow_key} in the {final_industry} industry.
+            You are a professional enterprise AWS Solutions Architect. Generate a formal enterprise SOW for {sow_key} in the {final_industry} industry. 
 
-            STRICT MANDATE: You MUST generate the content exactly in the pattern: Heading then its content, Heading then its content. DO NOT group headings. Start immediately with Section 1.
+            STRICT MANDATE: You MUST generate the content in a strictly sequential flow: Main Heading -> Sub-heading -> Content. NEVER group headings together. Every section must follow this specific pattern.
 
-            STRUCTURE:
+            SECTION GENERATION TEMPLATE (Follow exactly for sections 1 to 10):
+
             1 TABLE OF CONTENTS
-            Generate a formal TOC for sections 1-10.
+            (Generate a standard TOC list of the 10 main sections)
 
             2 PROJECT OVERVIEW
             2.1 OBJECTIVE
-            {biz_objective} (Rewrite into professional architect language)
+            (Content: Rewrite {biz_objective} into a formal enterprise architect goal)
             2.2 PROJECT SPONSOR(S) / STAKEHOLDER(S) / PROJECT TEAM
+            (Content: Output these stakeholder tables exactly):
             ### Partner Executive Sponsor
             {get_md(st.session_state.stakeholders["Partner"])}
             ### Customer Executive Sponsor
@@ -433,45 +440,71 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
             ### Project Escalation Contacts
             {get_md(st.session_state.stakeholders["Escalation"])}
             2.3 KEY OUTCOMES EXPECTED
-            {', '.join(sel_outcomes)}
+            (Content: {', '.join(sel_outcomes)})
 
             3 ASSUMPTIONS & DEPENDENCIES
-            3.1 CUSTOMER DEPENDENCIES: {', '.join(sel_deps)}
-            3.2 DATA CHARACTERISTICS: {data_meta}
-            3.3 KEY ASSUMPTIONS: {', '.join(sel_ass)} {custom_ass}
+            3.1 CUSTOMER DEPENDENCIES
+            (Content: {', '.join(sel_deps)})
+            3.2 DATA CHARACTERISTICS
+            (Content: Detailed description based on {data_meta})
+            3.3 KEY ASSUMPTIONS
+            (Content: {', '.join(sel_ass)} {custom_ass})
 
             4 POC SUCCESS CRITERIA
-            Outline {', '.join(sel_dims)} and strategy {val_req}.
+            4.1 SUCCESS DIMENSIONS
+            (Content: Measurable KPIs for {', '.join(sel_dims)})
+            4.2 VALIDATION STRATEGY
+            (Content: {val_req})
 
             5 SCOPE OF WORK – FUNCTIONAL CAPABILITIES
-            Functional Flows: {', '.join(sel_caps)} {custom_cap}. Integrations: {', '.join(sel_ints)}.
+            5.1 FUNCTIONAL FLOWS
+            (Content: Detail the flows: {', '.join(sel_caps)} {custom_cap})
+            5.2 INTEGRATIONS
+            (Content: {', '.join(sel_ints)})
 
             6 SOLUTION ARCHITECTURE
-            Placeholder: "Specifics to be discussed basis POC". (Diagram will be injected here).
+            (Content: "Specifics to be discussed basis POC". NOTE: A diagram will be injected here manually.)
 
             7 ARCHITECTURE & AWS SERVICES
-            Describe: {', '.join(compute_choices)}, {', '.join(ai_svcs)}, {', '.join(st_svcs)}, {ui_layer}.
+            7.1 COMPUTE & ORCHESTRATION
+            (Content: {', '.join(compute_choices)})
+            7.2 AI & ML SERVICES
+            (Content: {', '.join(ai_svcs)})
+            7.3 STORAGE & DATABASE
+            (Content: {', '.join(st_svcs)})
+            7.4 UI LAYER
+            (Content: {ui_layer})
 
             8 NON-FUNCTIONAL REQUIREMENTS
-            Performance: {perf}. Security: {', '.join(sec)}.
+            8.1 PERFORMANCE PROFILE
+            (Content: {perf})
+            8.2 SECURITY & COMPLIANCE
+            (Content: {', '.join(sec)})
 
             9 TIMELINE & PHASING
-            Duration: {poc_dur}. Cost Ownership: {ownership}.
-            Phases:
+            9.1 DURATION
+            (Content: {poc_dur})
+            9.2 PHASES BREAKDOWN
+            (Content: markdown table):
             {get_md(st.session_state.timeline_phases)}
 
             10 FINAL OUTPUTS
-            Deliverables: {', '.join(delivs)}. Next Steps: {', '.join(nxt)}.
-            Pricing Summary:
+            10.1 DELIVERABLES
+            (Content: {', '.join(delivs)})
+            10.2 POST-POC NEXT STEPS
+            (Content: {', '.join(nxt)})
+            10.3 PRICING SUMMARY
+            (Content: markdown table):
             {cost_table}
+            Cost Ownership: {ownership}
 
             RULES:
-            - Start with '1 TABLE OF CONTENTS'. No intro text.
-            - Pattern MUST be: Heading -> Content.
-            - ALL Main Titles MUST be ALL CAPS.
-            - Black text only. Times New Roman style. Professional spelling.
+            - Start immediately with heading '1 TABLE OF CONTENTS'. No intro text.
+            - Pattern MUST be: Heading -> Sub-heading -> Content.
+            - Main section titles MUST be ALL CAPS.
+            - Black text only. Times New Roman style font. Professional spelling.
             """
-            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering 1 to 10 exactly. Heading->Content flow. Black text only. Capitalize main titles."}]}})
+            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering 1 to 10 exactly. Pattern: Heading -> Sub-heading -> Content. Black text only. Capitalize main titles."}]}})
             if res:
                 st.session_state.generated_sow = res.json()['candidates'][0]['content']['parts'][0]['text']
                 st.rerun()
@@ -497,4 +530,4 @@ if st.session_state.generated_sow:
     if st.button("💾 Prepare Microsoft Word"):
         branding = {"sow_name": sow_key, "customer_logo_bytes": customer_logo.getvalue() if customer_logo else None, "doc_date_str": doc_date.strftime("%d %B %Y")}
         docx_data = create_docx_logic(st.session_state.generated_sow, branding, sow_key)
-        st.download_button("📥 Download (.docx)", docx_data, f"SOW_{sow_key.replace(' ', '_')}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+        st.download_button("📥 Download SOW (.docx)", docx_data, f"SOW_{sow_key.replace(' ', '_')}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
