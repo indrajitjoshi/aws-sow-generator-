@@ -1,7 +1,6 @@
 streamlit
-pandas
 requests
+pandas
 python-docx
 tabulate
-diagrams
 datetime
