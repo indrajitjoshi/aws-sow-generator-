@@ -252,16 +252,26 @@ def create_docx_logic(text_content, branding, sow_name):
         
     bio = io.BytesIO(); doc.save(bio); return bio.getvalue()
 
-def call_gemini_with_retry(api_key, payload):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={api_key}"
-    for attempt in range(5):
+def call_gemini_with_retry(payload):
+    # API key is provided at runtime in this environment
+    apiKey = ""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={apiKey}"
+    
+    delays = [1, 2, 4, 8, 16]
+    for attempt in range(len(delays)):
         try:
-            res = requests.post(url, json=payload)
-            if res.status_code == 200: return res, None
-            if res.status_code in [503, 429]: time.sleep(2**attempt); continue
-            return None, f"API Error {res.status_code}"
-        except: time.sleep(2**attempt)
-    return None, "Model overloaded."
+            res = requests.post(url, json=payload, timeout=30)
+            if res.status_code == 200:
+                return res, None
+            # Retry on overload or too many requests
+            if res.status_code in [503, 429]:
+                time.sleep(delays[attempt])
+                continue
+            return None, f"API Error {res.status_code}: {res.text}"
+        except requests.exceptions.RequestException as e:
+            time.sleep(delays[attempt])
+            
+    return None, "The model is currently overloaded after multiple retries. Please try again in a moment."
 
 # --- INITIALIZATION ---
 def init_state():
@@ -290,7 +300,6 @@ def reset_all():
 with st.sidebar:
     st.image("https://img.icons8.com/fluency/96/artificial-intelligence.png", width=60)
     st.title("Architect Pro")
-    with st.expander("🔑 API Key", expanded=False): api_key = st.text_input("Gemini API Key", type="password")
     st.divider()
     st.header("📋 1. Project Intake")
     sow_opts = ["1. L1 Support Bot POC SOW", "2. Beauty Advisor POC SOW", "3. Ready Search POC Scope of Work Document", "4. AI based Image Enhancement POC SOW", "5. AI based Image Inspection POC SOW", "6. Gen AI for SOP POC SOW", "7. Project Scope Document", "8. Gen AI Speech To Speech", "9. PoC Scope Document"]
@@ -394,100 +403,103 @@ nxt = st.multiselect("Next Steps:", ["Production proposal", "Scaling roadmap", "
 
 # --- GENERATION ---
 if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
-    if not api_key: st.error("API Key required.")
-    else:
-        with st.spinner("Generating document..."):
-            def get_md(df): return df.to_markdown(index=False)
-            cost_info = SOW_COST_TABLE_MAP.get(sow_key, {})
-            cost_table = "| System | Infra Cost / month | AWS Calculator Cost |\n| --- | --- | --- |\n"
-            for k,v in cost_info.items(): 
-                label = "POC Cost" if k == "poc_cost" else "Prod Cost" if k == "prod_cost" else k
-                cost_table += f"| {label} | {v} | Estimate |\n"
-            
-            prompt = f"""
-            You are a professional enterprise AWS Solutions Architect. Generate a formal enterprise SOW for {sow_key} in the {final_industry} industry. 
+    with st.spinner("Generating document..."):
+        def get_md(df): return df.to_markdown(index=False)
+        cost_info = SOW_COST_TABLE_MAP.get(sow_key, {})
+        cost_table = "| System | Infra Cost / month | AWS Calculator Cost |\n| --- | --- | --- |\n"
+        for k,v in cost_info.items(): 
+            label = "POC Cost" if k == "poc_cost" else "Prod Cost" if k == "prod_cost" else k
+            cost_table += f"| {label} | {v} | Estimate |\n"
+        
+        prompt = f"""
+        You are a professional enterprise AWS Solutions Architect. Generate a formal enterprise SOW for {sow_key} in the {final_industry} industry. 
 
-            STRICT MANDATE: Use standard Markdown headings (# for Main, ## for Sub, ### for Sub-Sub).
-            Follow this sequential flow exactly: Main Heading -> Sub-heading -> Paragraph/Table.
-            DO NOT include instructions like "(Content: ...)" in the output.
+        STRICT MANDATE: Use standard Markdown headings (# for Main, ## for Sub, ### for Sub-Sub).
+        Follow this sequential flow exactly: Main Heading -> Sub-heading -> Paragraph/Table.
 
-            # 1 TABLE OF CONTENTS
-            (List sections 1 to 10)
+        # 1 TABLE OF CONTENTS
+        (List sections 1 to 10)
 
-            # 2 PROJECT OVERVIEW
-            ## 2.1 OBJECTIVE
-            (Rewrite {biz_objective} formally)
-            ## 2.2 PROJECT SPONSOR(S) / STAKEHOLDER(S) / PROJECT TEAM
-            ### Partner Executive Sponsor
-            {get_md(st.session_state.stakeholders["Partner"])}
-            ### Customer Executive Sponsor
-            {get_md(st.session_state.stakeholders["Customer"])}
-            ### AWS Executive Sponsor
-            {get_md(st.session_state.stakeholders["AWS"])}
-            ### Project Escalation Contacts
-            {get_md(st.session_state.stakeholders["Escalation"])}
-            ## 2.3 KEY OUTCOMES EXPECTED
-            {', '.join(sel_outcomes)}
+        # 2 PROJECT OVERVIEW
+        ## 2.1 OBJECTIVE
+        (Rewrite {biz_objective} formally)
+        ## 2.2 PROJECT SPONSOR(S) / STAKEHOLDER(S) / PROJECT TEAM
+        ### Partner Executive Sponsor
+        {get_md(st.session_state.stakeholders["Partner"])}
+        ### Customer Executive Sponsor
+        {get_md(st.session_state.stakeholders["Customer"])}
+        ### AWS Executive Sponsor
+        {get_md(st.session_state.stakeholders["AWS"])}
+        ### Project Escalation Contacts
+        {get_md(st.session_state.stakeholders["Escalation"])}
+        ## 2.3 KEY OUTCOMES EXPECTED
+        {', '.join(sel_outcomes)}
 
-            # 3 ASSUMPTIONS & DEPENDENCIES
-            ## 3.1 CUSTOMER DEPENDENCIES
-            {', '.join(sel_deps)}
-            ## 3.2 DATA CHARACTERISTICS
-            {data_meta}
-            ## 3.3 KEY ASSUMPTIONS
-            {', '.join(sel_ass)} {custom_ass}
+        # 3 ASSUMPTIONS & DEPENDENCIES
+        ## 3.1 CUSTOMER DEPENDENCIES
+        {', '.join(sel_deps)}
+        ## 3.2 DATA CHARACTERISTICS
+        {data_meta}
+        ## 3.3 KEY ASSUMPTIONS
+        {', '.join(sel_ass)} {custom_ass}
 
-            # 4 POC SUCCESS CRITERIA
-            ## 4.1 SUCCESS DIMENSIONS
-            KPIs for {', '.join(sel_dims)}
-            ## 4.2 VALIDATION STRATEGY
-            {val_req}
+        # 4 POC SUCCESS CRITERIA
+        ## 4.1 SUCCESS DIMENSIONS
+        KPIs for {', '.join(sel_dims)}
+        ## 4.2 VALIDATION STRATEGY
+        {val_req}
 
-            # 5 SCOPE OF WORK – FUNCTIONAL CAPABILITIES
-            ## 5.1 FUNCTIONAL FLOWS
-            {', '.join(sel_caps)} {custom_cap}
-            ## 5.2 INTEGRATIONS
-            {', '.join(sel_ints)}
+        # 5 SCOPE OF WORK – FUNCTIONAL CAPABILITIES
+        ## 5.1 FUNCTIONAL FLOWS
+        {', '.join(sel_caps)} {custom_cap}
+        ## 5.2 INTEGRATIONS
+        {', '.join(sel_ints)}
 
-            # 6 SOLUTION ARCHITECTURE
-            (Text description indicating architecture to be validated)
+        # 6 SOLUTION ARCHITECTURE
+        (Detailed technical description for the proposed AWS architecture)
 
-            # 7 ARCHITECTURE & AWS SERVICES
-            ## 7.1 COMPUTE & ORCHESTRATION
-            {', '.join(compute_choices)}
-            ## 7.2 AI & ML SERVICES
-            {', '.join(ai_svcs)}
-            ## 7.3 STORAGE & DATABASE
-            {', '.join(st_svcs)}
-            ## 7.4 UI LAYER
-            {ui_layer}
+        # 7 ARCHITECTURE & AWS SERVICES
+        ## 7.1 COMPUTE & ORCHESTRATION
+        {', '.join(compute_choices)}
+        ## 7.2 AI & ML SERVICES
+        {', '.join(ai_svcs)}
+        ## 7.3 STORAGE & DATABASE
+        {', '.join(st_svcs)}
+        ## 7.4 UI LAYER
+        {ui_layer}
 
-            # 8 NON-FUNCTIONAL REQUIREMENTS
-            ## 8.1 PERFORMANCE PROFILE
-            {perf}
-            ## 8.2 SECURITY & COMPLIANCE
-            {', '.join(sec)}
+        # 8 NON-FUNCTIONAL REQUIREMENTS
+        ## 8.1 PERFORMANCE PROFILE
+        {perf}
+        ## 8.2 SECURITY & COMPLIANCE
+        {', '.join(sec)}
 
-            # 9 TIMELINE & PHASING
-            ## 9.1 DURATION
-            {poc_dur}
-            ## 9.2 PHASES BREAKDOWN
-            {get_md(st.session_state.timeline_phases)}
+        # 9 TIMELINE & PHASING
+        ## 9.1 DURATION
+        {poc_dur}
+        ## 9.2 PHASES BREAKDOWN
+        {get_md(st.session_state.timeline_phases)}
 
-            # 10 FINAL OUTPUTS
-            ## 10.1 DELIVERABLES
-            {', '.join(delivs)}
-            ## 10.2 POST-POC NEXT STEPS
-            {', '.join(nxt)}
-            ## 10.3 PRICING SUMMARY
-            {cost_table}
-            Cost Ownership: {ownership}
-            """
-            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt}]}], "systemInstruction": {"parts": [{"text": "Professional Solutions Architect. Use # for main headers and ## for subsections. Strict numbering 1-10."}]}})
-            if res:
-                st.session_state.generated_sow = res.json()['candidates'][0]['content']['parts'][0]['text']
-                st.rerun()
-            else: st.error(err)
+        # 10 FINAL OUTPUTS
+        ## 10.1 DELIVERABLES
+        {', '.join(delivs)}
+        ## 10.2 POST-POC NEXT STEPS
+        {', '.join(nxt)}
+        ## 10.3 PRICING SUMMARY
+        {cost_table}
+        Cost Ownership: {ownership}
+        """
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}], 
+            "systemInstruction": {"parts": [{"text": "You are a Solutions Architect. Use # for main headers and ## for subsections. Strict numbering 1-10. Black text only. Professional enterprise tone."}]}
+        }
+        
+        res, err = call_gemini_with_retry(payload)
+        if res:
+            st.session_state.generated_sow = res.json()['candidates'][0]['content']['parts'][0]['text']
+            st.rerun()
+        else:
+            st.error(err)
 
 # --- REVIEW & EXPORT ---
 if st.session_state.generated_sow:
@@ -497,12 +509,14 @@ if st.session_state.generated_sow:
         st.markdown('<div class="sow-preview">', unsafe_allow_html=True)
         calc_url_p = CALCULATOR_LINKS.get(sow_key, "https://calculator.aws/")
         p_content = st.session_state.generated_sow.replace("Estimate", f'<a href="{calc_url_p}" target="_blank">Estimate</a>')
-        # Simple injection for visual preview
+        
+        # Injection logic for the diagram
         if "# 6 SOLUTION ARCHITECTURE" in p_content:
             parts = p_content.split("# 6 SOLUTION ARCHITECTURE")
             st.markdown(parts[0] + "# 6 SOLUTION ARCHITECTURE", unsafe_allow_html=True)
             diag_out = SOW_DIAGRAM_MAP.get(sow_key)
-            if diag_out and os.path.exists(diag_out): st.image(diag_out, caption=f"{sow_key} Architecture")
+            if diag_out and os.path.exists(diag_out):
+                st.image(diag_out, caption=f"{sow_key} Architecture")
             st.markdown(parts[1], unsafe_allow_html=True)
         else:
             st.markdown(p_content, unsafe_allow_html=True)
@@ -512,4 +526,3 @@ if st.session_state.generated_sow:
         branding = {"sow_name": sow_key, "customer_logo_bytes": customer_logo.getvalue() if customer_logo else None, "doc_date_str": doc_date.strftime("%d %B %Y")}
         docx_data = create_docx_logic(st.session_state.generated_sow, branding, sow_key)
         st.download_button("📥 Download SOW (.docx)", docx_data, f"SOW_{sow_key.replace(' ', '_')}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
-
