@@ -252,9 +252,9 @@ def create_docx_logic(text_content, branding, sow_name):
         
     bio = io.BytesIO(); doc.save(bio); return bio.getvalue()
 
-def call_gemini_with_retry(payload):
-    # API key is provided at runtime in this environment
-    apiKey = ""
+def call_gemini_with_retry(payload, api_key_input=""):
+    # Default to environment injection if input is empty
+    apiKey = api_key_input if api_key_input else ""
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={apiKey}"
     
     delays = [1, 2, 4, 8, 16]
@@ -300,6 +300,8 @@ def reset_all():
 with st.sidebar:
     st.image("https://img.icons8.com/fluency/96/artificial-intelligence.png", width=60)
     st.title("Architect Pro")
+    with st.expander("🔑 API Key", expanded=True):
+        api_key = st.text_input("Gemini API Key", type="password", help="Enter your Gemini API key to resolve Permission Denied errors.")
     st.divider()
     st.header("📋 1. Project Intake")
     sow_opts = ["1. L1 Support Bot POC SOW", "2. Beauty Advisor POC SOW", "3. Ready Search POC Scope of Work Document", "4. AI based Image Enhancement POC SOW", "5. AI based Image Inspection POC SOW", "6. Gen AI for SOP POC SOW", "7. Project Scope Document", "8. Gen AI Speech To Speech", "9. PoC Scope Document"]
@@ -494,7 +496,8 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
             "systemInstruction": {"parts": [{"text": "You are a Solutions Architect. Use # for main headers and ## for subsections. Strict numbering 1-10. Black text only. Professional enterprise tone."}]}
         }
         
-        res, err = call_gemini_with_retry(payload)
+        # Pass the api_key from the sidebar input
+        res, err = call_gemini_with_retry(payload, api_key_input=api_key)
         if res:
             st.session_state.generated_sow = res.json()['candidates'][0]['content']['parts'][0]['text']
             st.rerun()
