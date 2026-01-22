@@ -155,9 +155,6 @@ def create_docx_logic(text_content, branding, sow_name):
         line = lines[i].strip()
         if not line: i += 1; continue
         
-        # Determine if this is a bullet point
-        is_bullet = line.startswith('- ') or line.startswith('* ')
-        
         # Clean markdown artifacts for identification
         clean_line = re.sub(r'#+\s*', '', line).strip()
         clean_line = re.sub(r'\*+', '', clean_line).strip()
@@ -212,16 +209,16 @@ def create_docx_logic(text_content, branding, sow_name):
                     cell = t.rows[0].cells[idx]
                     r_h = cell.paragraphs[0].add_run(h_text)
                     r_h.bold = True; r_h.font.name = 'Times New Roman'
+                    r_h.font.color.rgb = RGBColor(0, 0, 0)
                 for row_line in table_lines[2:]:
                     cells_data = [c.strip() for c in row_line.split('|') if c.strip()]
                     r = t.add_row().cells
                     for idx, c_text in enumerate(cells_data): 
                         if idx < len(r): 
                             p_r = r[idx].paragraphs[0]
-                            # Active hyperlink for "Estimate" (Case insensitive)
+                            # Active hyperlink for "Estimate"
                             if "estimate" in c_text.lower():
                                 calc_url = CALCULATOR_LINKS.get(sow_name, "https://calculator.aws/")
-                                # Find actual text to replace
                                 start_idx = c_text.lower().find("estimate")
                                 pre = c_text[:start_idx]
                                 post = c_text[start_idx+len("estimate"):]
@@ -239,15 +236,14 @@ def create_docx_logic(text_content, branding, sow_name):
             for run in h.runs: 
                 run.font.name = 'Times New Roman'
                 run.font.color.rgb = RGBColor(0, 0, 0)
-        elif is_bullet:
+        elif line.startswith('- ') or line.startswith('* '):
             p_b = doc.add_paragraph(style="List Bullet")
-            # Fixed the truncation logic that caused spelling errors
+            # Strips bullets while keeping first letter intact
             bullet_clean = re.sub(r'^[\-\*]\s*', '', line).strip()
             bullet_clean = re.sub(r'\*+', '', bullet_clean).strip()
             r_b = p_b.add_run(bullet_clean); r_b.font.name, r_b.font.color.rgb = 'Times New Roman', RGBColor(0, 0, 0)
         else:
             p_n = doc.add_paragraph()
-            # Handle Estimate links in plain text
             if "estimate" in clean_line.lower():
                 calc_url = CALCULATOR_LINKS.get(sow_name, "https://calculator.aws/")
                 start_idx = clean_line.lower().find("estimate")
@@ -295,6 +291,7 @@ def init_state():
 init_state()
 
 def reset_all():
+    # Thoroughly reset session state
     for key in list(st.session_state.keys()):
         del st.session_state[key]
     init_state()
@@ -426,7 +423,7 @@ nxt = st.multiselect("Next Steps:", ["Production proposal", "Scaling roadmap", "
 if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
     if not api_key: st.error("API Key required.")
     else:
-        with st.spinner("Generating document..."):
+        with st.spinner("Generating document flow..."):
             def get_md(df): return df.to_markdown(index=False)
             cost_info = SOW_COST_TABLE_MAP.get(sow_key, {})
             cost_table = "| System | Infra Cost / month | AWS Calculator Cost |\n| --- | --- | --- |\n"
@@ -435,13 +432,14 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
                 cost_table += f"| {label} | {v} | Estimate |\n"
             
             prompt = f"""
-            You are a professional enterprise AWS Solutions Architect. Generate a formal enterprise SOW for {sow_key} in the {final_industry} industry.
+            You are a professional AWS Solutions Architect. Generate a formal SOW for {sow_key} in the {final_industry} industry.
 
-            STRICT GENERATION RULE: For each section from 1 to 10, first output the heading in ALL CAPS, followed immediately by its content. Never group all headings at the beginning.
+            STRICT GENERATION RULE: For each section from 1 to 10, follow a rigid "Heading then Content" pattern. Output the Heading in ALL CAPS, followed immediately by its individual content block. NEVER group headings or add introductory fluff before Section 1.
 
-            STRUCTURE TO FOLLOW (Heading then its Content):
+            SEQUENTIAL TEMPLATE:
+
             1 TABLE OF CONTENTS
-            (Generate a standard TOC table list)
+            (Generate a standard TOC table list for the 10 sections)
 
             2 PROJECT OVERVIEW
             ## 2.1 OBJECTIVE: {biz_objective}
@@ -463,7 +461,7 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
             ## 3.3 KEY ASSUMPTIONS: {', '.join(sel_ass)} {custom_ass}
 
             4 POC SUCCESS CRITERIA
-            (Success Dimensions: {', '.join(sel_dims)}. Validation: {val_req})
+            (Success Dimensions: {', '.join(sel_dims)}. Validation Strategy: {val_req})
 
             5 SCOPE OF WORK – FUNCTIONAL CAPABILITIES
             (Functional Flows: {', '.join(sel_caps)} {custom_cap}. Integrations: {', '.join(sel_ints)})
@@ -472,29 +470,29 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
             Content: "Specifics to be discussed basis POC" (Note: Diagram will be auto-injected here).
 
             7 ARCHITECTURE & AWS SERVICES
-            (Services description: {', '.join(compute_choices)}, {', '.join(ai_svcs)}, {', '.join(st_svcs)}, {ui_layer})
+            (Describe: {', '.join(compute_choices)}, {', '.join(ai_svcs)}, {', '.join(st_svcs)}, {ui_layer})
 
             8 NON-FUNCTIONAL REQUIREMENTS
-            (Performance: {perf}. Security: {', '.join(sec)})
+            (Profile: {perf}. Controls: {', '.join(sec)})
 
             9 TIMELINE & PHASING
-            Duration: {poc_dur}. Cost Ownership: {ownership}.
-            Phases:
+            Duration: {poc_dur}. Phases:
             {get_md(st.session_state.timeline_phases)}
 
             10 FINAL OUTPUTS
             Deliverables: {', '.join(delivs)}
-            Next Steps: {', '.join(nxt)}
+            Post-PoC Next Steps: {', '.join(nxt)}
             Pricing:
             {cost_table}
+            Ownership: {ownership}
 
-            RULES:
-            - Start immediately with '1 TABLE OF CONTENTS'. No intro text or fluff.
-            - ALL MAIN TITLES MUST BE IN CAPITAL LETTERS.
-            - Output Heading X, then Content X, then Heading Y, then Content Y.
-            - Tone: Corporate, technical, enterprise-ready. No markdown bolding (**).
+            FINAL CONSTRAINTS:
+            - Start exactly with '1 TABLE OF CONTENTS'.
+            - Heading -> Content flow only.
+            - All MAIN SECTION titles MUST be CAPITAL LETTERS.
+            - No markdown bolding (**). Black text only. Times New Roman style.
             """
-            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering 1 to 10 exactly. Heading->Content flow. Black text only. Capitalize all titles."}]}})
+            res, err = call_gemini_with_retry(api_key, {"contents": [{"parts": [{"text": prompt}]}], "systemInstruction": {"parts": [{"text": "Solutions Architect. Follow numbering 1 to 10 exactly. Heading->Content flow. Black text only. Professional enterprise wording."}]}})
             if res:
                 st.session_state.generated_sow = res.json()['candidates'][0]['content']['parts'][0]['text']
                 st.rerun()
@@ -504,18 +502,18 @@ if st.button("✨ Generate Full SOW", type="primary", use_container_width=True):
 if st.session_state.generated_sow:
     st.divider(); tab_e, tab_p = st.tabs(["✍️ Editor", "📄 Visual Preview"])
     with tab_e: 
-        st.session_state.generated_sow = st.text_area("Modify SOW Content:", st.session_state.generated_sow, height=600)
+        st.session_state.generated_sow = st.text_area("Modify Content:", st.session_state.generated_sow, height=600)
     with tab_p:
         st.markdown('<div class="sow-preview">', unsafe_allow_html=True)
         calc_url_p = CALCULATOR_LINKS.get(sow_key, "https://calculator.aws/")
         p_content = st.session_state.generated_sow.replace("Estimate", f'<a href="{calc_url_p}" target="_blank">Estimate</a>')
         
-        # Inject Solution Architecture Diagram in Section 6
+        # Inject Diagram mapping
         match = re.search(r'(?i)(^6\s+SOLUTION ARCHITECTURE.*)', p_content, re.MULTILINE)
         if match:
             st.markdown(p_content[:match.end()], unsafe_allow_html=True)
             diag_out = SOW_DIAGRAM_MAP.get(sow_key)
-            if diag_out and os.path.exists(diag_out): st.image(diag_out, caption=f"{sow_key} Architecture Diagram")
+            if diag_out and os.path.exists(diag_out): st.image(diag_out, caption=f"{sow_key} Architecture")
             st.markdown(p_content[match.end():], unsafe_allow_html=True)
         else:
             st.markdown(p_content, unsafe_allow_html=True)
@@ -524,4 +522,4 @@ if st.session_state.generated_sow:
     if st.button("💾 Prepare Microsoft Word"):
         branding = {"sow_name": sow_key, "customer_logo_bytes": customer_logo.getvalue() if customer_logo else None, "doc_date_str": doc_date.strftime("%d %B %Y")}
         docx_data = create_docx_logic(st.session_state.generated_sow, branding, sow_key)
-        st.download_button("📥 Download SOW (.docx)", docx_data, f"SOW_{sow_key.replace(' ', '_')}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+        st.download_button("📥 Download (.docx)", docx_data, f"SOW_{sow_key.replace(' ', '_')}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
